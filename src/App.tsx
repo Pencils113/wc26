@@ -14,7 +14,7 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState, type Dispatch, type DragEvent, type SetStateAction } from 'react'
 import './App.css'
 import { WorldCupMap } from './components/WorldCupMap'
-import { demoActualResults, emptyActualResults } from './data/results'
+import { emptyActualResults } from './data/results'
 import { roomBySlug } from './data/rooms'
 import { teamsByGroup, teamsById } from './data/teams'
 import {
@@ -53,7 +53,6 @@ import { hasSupabaseConfig } from './lib/supabaseClient'
 import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type MatchResult, type Room, type TeamId } from './types'
 
 type AppStep = 'gate' | 'name' | 'rulesIntro' | 'build' | 'leaderboard'
-type ResultsMode = 'pre' | 'demo'
 
 interface RoomSession {
   roomSlug: string
@@ -267,14 +266,13 @@ function App() {
   const [remoteSubmissions, setRemoteSubmissions] = useState<BracketSubmission[]>([])
   const [remoteActualResults, setRemoteActualResults] = useState<ActualResults | null>(null)
   const [remoteMatches, setRemoteMatches] = useState<MatchResult[]>([])
-  const [resultsMode, setResultsMode] = useState<ResultsMode>('pre')
   const [leaderboardOnly, setLeaderboardOnly] = useState(false)
   const [dataError, setDataError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const activeRoom = selectedRoomSlug ? roomBySlug[selectedRoomSlug] : null
   const liveSubmissions = hasSupabaseConfig ? remoteSubmissions : localSubmissions
-  const actualResults = resultsMode === 'demo' ? demoActualResults : remoteActualResults ?? emptyActualResults
+  const actualResults = remoteActualResults ?? emptyActualResults
   const submissions = useMemo(() => [...sampleSubmissions, ...liveSubmissions], [liveSubmissions])
   const visibleSubmissions = selectedRoomSlug
     ? submissions.filter((submission) => submission.roomSlug === selectedRoomSlug)
@@ -509,12 +507,10 @@ function App() {
     <main className="app-shell">
       <AppHeader
         activeRoom={activeRoom}
-        resultsMode={resultsMode}
         roomSession={roomSession}
         step={step}
         onNavigate={setStep}
         onReset={() => setStep('gate')}
-        onResultsModeChange={setResultsMode}
         leaderboardOnly={leaderboardOnly}
         showBoard={Boolean(currentSubmission)}
       />
@@ -542,7 +538,6 @@ function App() {
           entries={leaderboard}
           matchResults={remoteMatches}
           previewSubmission={previewSubmission}
-          resultsMode={resultsMode}
           room={activeRoom}
           onPreview={setPreviewSubmission}
         />
@@ -732,21 +727,17 @@ function RulesIntroScreen({
 
 function AppHeader({
   activeRoom,
-  resultsMode,
   roomSession,
   step,
   onNavigate,
-  onResultsModeChange,
   onReset,
   leaderboardOnly,
   showBoard,
 }: {
   activeRoom: Room
-  resultsMode: ResultsMode
   roomSession: RoomSession | null
   step: AppStep
   onNavigate: (step: AppStep) => void
-  onResultsModeChange: (mode: ResultsMode) => void
   onReset: () => void
   leaderboardOnly: boolean
   showBoard: boolean
@@ -764,7 +755,6 @@ function AppHeader({
           Jun 11
         </span>
       </div>
-      <ResultsModeControl mode={resultsMode} onChange={onResultsModeChange} />
       <nav className="dark-tabs" aria-label="Primary">
         {leaderboardOnly ? (
           <button
@@ -795,19 +785,6 @@ function AppHeader({
         )}
       </nav>
     </header>
-  )
-}
-
-function ResultsModeControl({ mode, onChange }: { mode: ResultsMode; onChange: (mode: ResultsMode) => void }) {
-  return (
-    <div className="results-mode-control" aria-label="Results preview mode">
-      <button className={mode === 'pre' ? 'active' : ''} onClick={() => onChange('pre')} type="button">
-        Pre
-      </button>
-      <button className={mode === 'demo' ? 'active' : ''} onClick={() => onChange('demo')} type="button">
-        Demo live
-      </button>
-    </div>
   )
 }
 
@@ -1862,7 +1839,6 @@ function LeaderboardPanel({
   matchResults,
   room,
   previewSubmission,
-  resultsMode,
   onPreview,
 }: {
   actualResults: ActualResults
@@ -1870,7 +1846,6 @@ function LeaderboardPanel({
   matchResults: MatchResult[]
   room: Room
   previewSubmission: BracketSubmission | null
-  resultsMode: ResultsMode
   onPreview: (submission: BracketSubmission | null) => void
 }) {
   const selectedSubmission = previewSubmission
@@ -1938,7 +1913,7 @@ function LeaderboardPanel({
           <WorldCupMap
             compact
             kicker="Map"
-            note={resultsMode === 'demo' ? 'Demo results preview' : 'Results will fill in here'}
+            note="Results will fill in here"
             stages={actualMapStages}
             title="Results"
           />
