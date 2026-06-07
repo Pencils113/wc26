@@ -80,6 +80,7 @@ const PASSCODES: Record<string, string> = {
   conway: 'conway',
   larooch: 'larooch',
 }
+const LOGO_SRC = `${import.meta.env.BASE_URL}favicon.png`
 
 const ROUND_ORDER = ['round32', 'round16', 'quarterfinal', 'semifinal', 'final'] as const
 const GROUP_ADVANCER_POINTS = 2
@@ -442,7 +443,6 @@ function GateScreen({ onEnter }: { onEnter: (roomSlug: string, passcode: string)
   return (
     <main className="gate-screen">
       <section className="gate-box">
-        <div className="gate-mark">26</div>
         <label htmlFor="passcode">Pass code</label>
         <input
           autoFocus
@@ -451,7 +451,6 @@ function GateScreen({ onEnter }: { onEnter: (roomSlug: string, passcode: string)
           onKeyDown={(event) => {
             if (event.key === 'Enter') submit()
           }}
-          placeholder="••••••••"
           type="password"
           value={passcode}
         />
@@ -585,7 +584,7 @@ function AppHeader({
   return (
     <header className="app-header">
       <button className="wordmark" onClick={onReset} type="button">
-        <span>26</span>
+        <img alt="" aria-hidden="true" className="brand-logo" src={LOGO_SRC} />
         <strong>{activeRoom.name}</strong>
       </button>
       <div className="header-meta">

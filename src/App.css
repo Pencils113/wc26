@@ -28,19 +28,6 @@
   padding: 18px;
 }
 
-.gate-mark {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 50%;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .gate-box label,
 .kicker {
   color: var(--muted);
@@ -111,9 +98,9 @@
 
 .onboarding-card h1,
 .rules-intro-card h1 {
-  margin: 8px 0 18px;
-  font-size: 38px;
-  line-height: 0.95;
+  margin: 8px 0 16px;
+  font-size: 24px;
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
@@ -216,17 +203,11 @@
   cursor: pointer;
 }
 
-.wordmark span {
+.brand-logo {
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line-strong);
+  object-fit: contain;
   border-radius: 50%;
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 900;
 }
 
 .wordmark strong {
