@@ -813,6 +813,7 @@ function BuildScreen({
   onSubmit: () => void | Promise<void>
 }) {
   const mapStages = useMemo(() => getPredictionTeamMapStages(picks), [picks])
+  const knockoutProgress = useMemo(() => getKnockoutPickProgress(picks), [picks])
 
   if (readOnly) {
     return <SubmittedBuildScreen actualResults={actualResults} champion={champion} filledGroupSlots={filledGroupSlots} picks={picks} />
@@ -826,6 +827,11 @@ function BuildScreen({
           <div className="progress-stack">
             <ProgressRow label="Groups" value={`${filledGroupSlots}/48`} complete={groupStageComplete} />
             <ProgressRow label="Thirds" value={`${picks.thirdPlaceAdvancers.length}/8`} complete={picks.thirdPlaceAdvancers.length === 8} />
+            <ProgressRow
+              label="Knockout"
+              value={`${knockoutProgress.completed}/${knockoutProgress.total}`}
+              complete={knockoutProgress.completed === knockoutProgress.total}
+            />
             <ProgressRow label="Champion" value={champion ? teamsById[champion].code : '-'} complete={Boolean(champion)} />
           </div>
         </section>
@@ -874,6 +880,7 @@ function SubmittedBuildScreen({
   picks: BracketPicks
 }) {
   const mapStages = useMemo(() => getPredictionTeamMapStages(picks), [picks])
+  const knockoutProgress = useMemo(() => getKnockoutPickProgress(picks), [picks])
 
   return (
     <div className="review-shell">
@@ -891,6 +898,11 @@ function SubmittedBuildScreen({
           <div className="progress-stack">
             <ProgressRow label="Groups" value={`${filledGroupSlots}/48`} complete />
             <ProgressRow label="Thirds" value={`${picks.thirdPlaceAdvancers.length}/8`} complete />
+            <ProgressRow
+              label="Knockout"
+              value={`${knockoutProgress.completed}/${knockoutProgress.total}`}
+              complete={knockoutProgress.completed === knockoutProgress.total}
+            />
             <ProgressRow label="Champion" value={champion ? teamsById[champion].code : '-'} complete={Boolean(champion)} />
           </div>
         </section>
@@ -1539,6 +1551,18 @@ function buildActualPicks(actualResults: ActualResults): BracketPicks {
 
 function hasActualResults(actualResults: ActualResults) {
   return GROUP_IDS.some((group) => (actualResults.groupOrder[group]?.length ?? 0) >= 4) || Object.keys(actualResults.knockoutWinners).length > 0
+}
+
+function getKnockoutPickProgress(picks: BracketPicks) {
+  const matches = buildResolvedBracket(picks)
+  const completed = matches.filter((match) =>
+    match.teams.every((teamId) => Boolean(teamId)) && Boolean(match.selectedWinner),
+  ).length
+
+  return {
+    completed,
+    total: matches.length,
+  }
 }
 
 function formatResultDate(isoDate: string) {

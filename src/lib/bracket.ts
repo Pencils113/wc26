@@ -132,7 +132,9 @@ export const buildResolvedBracket = (picks: BracketPicks): ResolvedMatch[] => {
 export const isBracketComplete = (picks: BracketPicks) => {
   if (!isGroupStageComplete(picks)) return false
   if (picks.thirdPlaceAdvancers.length !== 8) return false
-  return Boolean(getChampion(picks))
+
+  const matches = buildResolvedBracket(picks)
+  return matches.every((match) => match.teams.every(Boolean) && Boolean(match.selectedWinner))
 }
 
 export const isGroupStageComplete = (picks: BracketPicks) =>
