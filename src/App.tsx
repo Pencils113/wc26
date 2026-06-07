@@ -33,6 +33,7 @@ import {
 } from './lib/bracket'
 import { buildLeaderboard, scoreSubmission } from './lib/scoring'
 import { getActualTeamMapStages, getPredictionTeamMapStages } from './lib/mapProgress'
+import { KNOCKOUT_ROUND_ORDER, knockoutLayout } from './lib/knockoutLayout'
 import {
   fetchRemoteActualResults,
   fetchRemoteSubmissions,
@@ -82,16 +83,8 @@ const PASSCODES: Record<string, string> = {
 }
 const LOGO_SRC = `${import.meta.env.BASE_URL}favicon.png`
 
-const ROUND_ORDER = ['round32', 'round16', 'quarterfinal', 'semifinal', 'final'] as const
 const GROUP_ADVANCER_POINTS = 2
 const GROUP_PLACEMENT_POINTS = [3, 2, 1, 0] as const
-const ROUND_POSITION = {
-  round32: { column: 1, offset: 1, spacing: 4 },
-  round16: { column: 2, offset: 3, spacing: 8 },
-  quarterfinal: { column: 3, offset: 7, spacing: 16 },
-  semifinal: { column: 4, offset: 15, spacing: 32 },
-  final: { column: 5, offset: 31, spacing: 64 },
-} as const
 
 const KNOCKOUT_TIMES: Record<string, string> = {
   M73: '8:00 PM ET',
@@ -897,11 +890,12 @@ function ReviewBracket({
     <section className="section-block review-section">
       <SectionHead kicker="02" title="Knockout" />
       <div className="review-bracket-grid">
-        {ROUND_ORDER.map((round) => (
+        {KNOCKOUT_ROUND_ORDER.map((round) => (
           matches
             .filter((match) => match.round === round)
-            .map((match, index) => {
-              const meta = ROUND_POSITION[round]
+            .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
+            .map((match) => {
+              const layout = knockoutLayout[match.id]
               const actualWinner = actualResults.knockoutWinners[match.id]
 
               return (
@@ -909,8 +903,8 @@ function ReviewBracket({
                   className="review-match"
                   key={match.id}
                   style={{
-                    gridColumn: meta.column,
-                    gridRow: `${meta.offset + index * meta.spacing} / span 4`,
+                    gridColumn: layout.column,
+                    gridRow: `${layout.row} / span ${layout.rowSpan}`,
                   }}
                 >
                   <span className="review-match-meta">
@@ -1252,38 +1246,43 @@ function KnockoutBuilder({
         title="Knockout"
       />
       <div className="classic-bracket">
-        {ROUND_ORDER.map((round) => {
+        {KNOCKOUT_ROUND_ORDER.map((round) => {
           const roundMatches = matches.filter((match) => match.round === round)
-          const meta = ROUND_POSITION[round]
 
-          return roundMatches.map((match, index) => (
-            <article
-              className={round === 'final' ? 'classic-match final' : 'classic-match'}
-              key={match.id}
-              style={{
-                gridColumn: meta.column,
-                gridRow: `${meta.offset + index * meta.spacing} / span 4`,
-              }}
-            >
-              <header>
-                <span>{match.id}</span>
-                <small>{match.date}</small>
-              </header>
-              {match.teams.map((teamId, slotIndex) => (
-                <TeamPickButton
-                  fallbackLabel={match.slots[slotIndex].label}
-                  key={`${match.id}-${slotIndex}`}
-                  onPick={(winnerId) => {
-                    if (readOnly) return
-                    setPicks((current) => setWinner(current, match.id, winnerId))
+          return roundMatches
+            .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
+            .map((match) => {
+              const layout = knockoutLayout[match.id]
+
+              return (
+                <article
+                  className={round === 'final' ? 'classic-match final' : 'classic-match'}
+                  key={match.id}
+                  style={{
+                    gridColumn: layout.column,
+                    gridRow: `${layout.row} / span ${layout.rowSpan}`,
                   }}
-                  readOnly={readOnly}
-                  selected={Boolean(teamId && match.selectedWinner === teamId)}
-                  teamId={teamId}
-                />
-              ))}
-            </article>
-          ))
+                >
+                  <header>
+                    <span>{match.id}</span>
+                    <small>{match.date}</small>
+                  </header>
+                  {match.teams.map((teamId, slotIndex) => (
+                    <TeamPickButton
+                      fallbackLabel={match.slots[slotIndex].label}
+                      key={`${match.id}-${slotIndex}`}
+                      onPick={(winnerId) => {
+                        if (readOnly) return
+                        setPicks((current) => setWinner(current, match.id, winnerId))
+                      }}
+                      readOnly={readOnly}
+                      selected={Boolean(teamId && match.selectedWinner === teamId)}
+                      teamId={teamId}
+                    />
+                  ))}
+                </article>
+              )
+            })
         })}
       </div>
     </section>
