@@ -191,6 +191,13 @@ const errorMessage = (error: unknown) => {
   return 'Something went wrong.'
 }
 
+const getCurrentAppUrl = () => {
+  const url = new URL(window.location.href)
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
 function App() {
   const [step, setStep] = useState<AppStep>('gate')
   const [selectedRoomSlug, setSelectedRoomSlug] = useState<string | null>(null)
@@ -637,7 +644,7 @@ function EmailScreen({
 
     try {
       if (hasSupabaseConfig) {
-        await sendRemoteEmailCode(normalized)
+        await sendRemoteEmailCode(normalized, getCurrentAppUrl())
         savePendingEmailAuth({ roomSlug: room.slug, ownerEmail: normalized })
       }
       setSent(true)

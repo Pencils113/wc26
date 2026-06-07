@@ -85,11 +85,12 @@ export const submitRemoteBracket = async ({
   if (error) throw error
 }
 
-export const sendRemoteEmailCode = async (email: string) => {
+export const sendRemoteEmailCode = async (email: string, emailRedirectTo?: string) => {
   const client = requireSupabase()
   const { error } = await client.auth.signInWithOtp({
     email,
     options: {
+      emailRedirectTo,
       shouldCreateUser: true,
     },
   })
