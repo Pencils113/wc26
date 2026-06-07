@@ -1,0 +1,24 @@
+name: Clear Bracket Submissions
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type clear-world-cup-submissions to delete Conway/Larooch submissions
+        required: true
+
+jobs:
+  clear-submissions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/clear-submissions.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM_CLEAR_SUBMISSIONS: ${{ inputs.confirm }}

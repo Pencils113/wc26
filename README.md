@@ -2,7 +2,7 @@
 
 A small, static World Cup bracket pool for friends, family, and the Conway room.
 
-The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It runs with local mock storage when Supabase credentials are absent, and switches to Supabase for submissions, results, and realtime leaderboard refresh when credentials are configured.
+The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It uses Supabase for submissions, synced match data, results, and leaderboard refresh, with a browser-only local fallback for development when Supabase credentials are absent.
 
 ## Local Development
 
@@ -38,8 +38,8 @@ The npm scripts call package entrypoints directly because this local npm shell w
 - Bracket submissions are saved to Supabase when configured, otherwise to browser `localStorage`.
 - Returning users with a saved submission land on their frozen bracket after entering the pass code.
 - The leaderboard is hidden until the current user has submitted.
-- The leaderboard includes seed demo brackets plus submitted room brackets.
-- Scores are zero before real results are written into Supabase or demo-live mode is enabled.
+- The leaderboard includes submitted room brackets.
+- Scores are zero before real results are written into Supabase.
 - Team stat cards show on hover/focus of the info button.
 
 ## Supabase Setup
@@ -74,7 +74,7 @@ If you already applied the schema before Conway became an open room, run `supaba
 
 After applying the schema:
 
-1. Confirm the seeded `conway` and `larooch` rooms have the passcodes you want.
+1. Confirm the configured `conway` and `larooch` rooms have the passcodes you want.
 2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in GitHub repository secrets.
 
 Required GitHub secrets for deploy/update workflows:
@@ -83,13 +83,11 @@ Required GitHub secrets for deploy/update workflows:
 - `VITE_SUPABASE_ANON_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `API_FOOTBALL_KEY`
-- `API_FOOTBALL_WORLD_CUP_LEAGUE_ID` optional, defaults to `1`
 
 ## Deployment
 
 `.github/workflows/deploy-pages.yml` builds `dist/` and deploys it to GitHub Pages.
 
-`.github/workflows/update-results.yml` is scheduled every 30 minutes and can also be run manually.
+`.github/workflows/update-results.yml` is scheduled every 5 minutes and can also be run manually.
 
 The Vite config uses `base: './'`, so the built app works on either a custom domain or a repo-path GitHub Pages URL.

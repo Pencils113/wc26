@@ -65,7 +65,7 @@ export interface BracketSubmission extends BracketPicks {
   ownerEmail?: string
   submittedAt: string
   updatedAt: string
-  source: 'local' | 'seed' | 'supabase'
+  source: 'local' | 'supabase'
 }
 
 export type EntrantSlot =

@@ -41,7 +41,6 @@ import {
   submitRemoteBracket,
   subscribeToRemotePoolUpdates,
 } from './lib/poolRepository'
-import { sampleSubmissions } from './lib/sampleSubmissions'
 import {
   loadLocalSubmissions,
   loadStoredRoomSession,
@@ -250,7 +249,6 @@ const errorMessage = (error: unknown) => {
 }
 
 const submissionSourceLabel = (source: BracketSubmission['source']) => {
-  if (source === 'seed') return 'Demo picks'
   if (source === 'local') return 'Your picks'
   return 'Submitted'
 }
@@ -273,9 +271,8 @@ function App() {
   const activeRoom = selectedRoomSlug ? roomBySlug[selectedRoomSlug] : null
   const liveSubmissions = hasSupabaseConfig ? remoteSubmissions : localSubmissions
   const actualResults = remoteActualResults ?? emptyActualResults
-  const submissions = useMemo(() => [...sampleSubmissions, ...liveSubmissions], [liveSubmissions])
   const visibleSubmissions = selectedRoomSlug
-    ? submissions.filter((submission) => submission.roomSlug === selectedRoomSlug)
+    ? liveSubmissions.filter((submission) => submission.roomSlug === selectedRoomSlug)
     : []
   const existingNameOptions = useMemo(() => {
     if (!selectedRoomSlug) return []
@@ -1578,18 +1575,6 @@ function formatEasternTime(isoUtc: string) {
   return `${EASTERN_TIME_FORMAT.format(new Date(isoUtc)).replace(/\u202f/g, ' ')} ET`
 }
 
-function getMockScore(fixtureId: string, teams: [ScheduleTeam, ScheduleTeam], winnerId: TeamId | null) {
-  if (!winnerId || !teams[0].teamId || !teams[1].teamId) return undefined
-
-  const seed = [...fixtureId].reduce((sum, char) => sum + char.charCodeAt(0), 0)
-  const winningGoals = [1, 2, 2, 3, 3][seed % 5]
-  const losingGoals = [0, 0, 1, 1, 2][seed % 5]
-
-  return teams[0].teamId === winnerId
-    ? [winningGoals, losingGoals] as [number, number]
-    : [losingGoals, winningGoals] as [number, number]
-}
-
 function getTimelineStatus(status: string): ScheduleFixture['status'] {
   const normalized = status.toLowerCase()
   if (['final', 'ft', 'aet', 'pen', 'post', 'completed'].includes(normalized)) return 'completed'
@@ -1647,7 +1632,6 @@ function buildGroupSchedule(actualResults: ActualResults): ScheduleFixture[] {
       teams,
       label: `Group ${group}`,
       status: groupComplete ? 'completed' : 'upcoming',
-      score: getMockScore(id, teams, winnerId),
       winnerId,
     }
   })
@@ -1675,7 +1659,6 @@ function buildLiveSchedule(actualResults: ActualResults, matchResults: MatchResu
       teams,
       label: match.label,
       status: winnerId ? 'completed' : 'upcoming',
-      score: getMockScore(match.id, teams, winnerId),
       winnerId,
     } satisfies ScheduleFixture, matchResultsById.get(match.id))
   })
