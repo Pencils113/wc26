@@ -69,6 +69,7 @@ interface ScheduleFixture {
   id: string
   date: string
   time: string
+  startsAt: number
   venue: string
   teams: [ScheduleTeam, ScheduleTeam]
   label: string
@@ -1501,6 +1502,21 @@ function getGroupFixtureDate(fixtureIndex: number) {
   return `Jun ${day}`
 }
 
+function getScheduleTimestamp(date: string, time: string) {
+  const [, monthText, dayText] = /^(Jun|Jul) (\d{1,2})$/.exec(date) ?? []
+  const [, hourText, minuteText, meridiem] = /^(\d{1,2}):(\d{2}) (AM|PM) ET$/.exec(time) ?? []
+  const month = monthText === 'Jul' ? 6 : 5
+  const day = Number(dayText)
+
+  if (!monthText || !Number.isFinite(day)) return Number.MAX_SAFE_INTEGER
+  if (!hourText || !minuteText || !meridiem) {
+    return Date.UTC(2026, month, day, 23, 59)
+  }
+
+  const hour = (Number(hourText) % 12) + (meridiem === 'PM' ? 12 : 0)
+  return Date.UTC(2026, month, day, hour, Number(minuteText))
+}
+
 function getMockScore(fixtureId: string, teams: [ScheduleTeam, ScheduleTeam], winnerId: TeamId | null) {
   if (!winnerId || !teams[0].teamId || !teams[1].teamId) return undefined
 
@@ -1539,6 +1555,10 @@ function buildGroupSchedule(actualResults: ActualResults): ScheduleFixture[] {
         id,
         date: override?.date ?? getGroupFixtureDate(globalIndex),
         time: override?.time ?? GROUP_STAGE_TIMES[globalIndex % GROUP_STAGE_TIMES.length],
+        startsAt: getScheduleTimestamp(
+          override?.date ?? getGroupFixtureDate(globalIndex),
+          override?.time ?? GROUP_STAGE_TIMES[globalIndex % GROUP_STAGE_TIMES.length],
+        ),
         venue: override?.venue ?? GROUP_STAGE_VENUES[globalIndex % GROUP_STAGE_VENUES.length],
         teams,
         label: `Group ${group}`,
@@ -1564,6 +1584,7 @@ function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
       id: match.id,
       date: match.date,
       time: KNOCKOUT_TIMES[match.id] ?? 'TBD',
+      startsAt: getScheduleTimestamp(match.date, KNOCKOUT_TIMES[match.id] ?? 'TBD'),
       venue: match.venue,
       teams,
       label: match.label,
@@ -1573,7 +1594,11 @@ function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
     } satisfies ScheduleFixture
   })
 
-  return [...groupSchedule, ...bracketSchedule]
+  return [...groupSchedule, ...bracketSchedule].sort((left, right) => {
+    const timeDelta = left.startsAt - right.startsAt
+    if (timeDelta !== 0) return timeDelta
+    return left.id.localeCompare(right.id)
+  })
 }
 
 function RulesInfoHover() {
