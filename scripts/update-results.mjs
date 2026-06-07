@@ -5,8 +5,8 @@ const requiredEnv = dryRun ? [] : ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
 const missing = requiredEnv.filter((name) => !process.env[name])
 
 if (missing.length > 0) {
-  console.log(`Skipping results sync. Missing env: ${missing.join(', ')}`)
-  process.exit(0)
+  console.error(`Missing required env for results sync: ${missing.join(', ')}`)
+  process.exit(1)
 }
 
 const supabase = dryRun
