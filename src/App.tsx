@@ -176,6 +176,12 @@ const errorMessage = (error: unknown) => {
   return 'Something went wrong.'
 }
 
+const submissionSourceLabel = (source: BracketSubmission['source']) => {
+  if (source === 'seed') return 'Demo picks'
+  if (source === 'local') return 'Your picks'
+  return 'Submitted'
+}
+
 function App() {
   const [step, setStep] = useState<AppStep>('gate')
   const [selectedRoomSlug, setSelectedRoomSlug] = useState<string | null>(null)
@@ -187,6 +193,7 @@ function App() {
   const [remoteSubmissions, setRemoteSubmissions] = useState<BracketSubmission[]>([])
   const [remoteActualResults, setRemoteActualResults] = useState<ActualResults | null>(null)
   const [resultsMode, setResultsMode] = useState<ResultsMode>('pre')
+  const [leaderboardOnly, setLeaderboardOnly] = useState(false)
   const [dataError, setDataError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -197,6 +204,21 @@ function App() {
   const visibleSubmissions = selectedRoomSlug
     ? submissions.filter((submission) => submission.roomSlug === selectedRoomSlug)
     : []
+  const existingNameOptions = useMemo(() => {
+    if (!selectedRoomSlug) return []
+
+    const seen = new Set<string>()
+    return liveSubmissions
+      .filter((submission) => submission.roomSlug === selectedRoomSlug)
+      .map((submission) => submission.ownerName.trim())
+      .filter((ownerName) => {
+        const normalized = ownerName.toLowerCase()
+        if (!ownerName || seen.has(normalized)) return false
+        seen.add(normalized)
+        return true
+      })
+      .sort((a, b) => a.localeCompare(b))
+  }, [liveSubmissions, selectedRoomSlug])
   const leaderboard = buildLeaderboard(visibleSubmissions, actualResults)
   const currentSubmission = useMemo(() => {
     if (!roomSession || !selectedRoomSlug) return null
@@ -265,6 +287,7 @@ function App() {
     setSelectedRoomSlug(roomSlug)
     setRoomPasscode(enteredPasscode)
     setPreviewSubmission(null)
+    setLeaderboardOnly(false)
     setDataError('')
 
     if (storedSession) {
@@ -275,6 +298,7 @@ function App() {
     setRoomSession(null)
     setPicks(createInitialPicks())
     setStep('name')
+    void loadSubmissionsForRoom(roomSlug).catch((error) => setDataError(errorMessage(error)))
   }
 
   const loadExistingBracket = async (session: RoomSession) => {
@@ -284,6 +308,7 @@ function App() {
 
       saveStoredRoomSession(session)
       setRoomSession(session)
+      setLeaderboardOnly(false)
       setPicks(
         existing
           ? {
@@ -313,6 +338,7 @@ function App() {
         thirdPlaceAdvancers: existing.thirdPlaceAdvancers,
         knockoutWinners: existing.knockoutWinners,
       })
+      setLeaderboardOnly(false)
       setStep('leaderboard')
       return
     }
@@ -347,12 +373,29 @@ function App() {
       }
 
       setPreviewSubmission(null)
+      setLeaderboardOnly(false)
       saveStoredRoomSession(roomSession)
       setStep('leaderboard')
     } catch (error) {
       setDataError(errorMessage(error))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const viewLeaderboardOnly = async () => {
+    if (!selectedRoomSlug) return
+
+    try {
+      await loadSubmissionsForRoom(selectedRoomSlug)
+      setRoomSession(null)
+      setPicks(createInitialPicks())
+      setPreviewSubmission(null)
+      setLeaderboardOnly(true)
+      setDataError('')
+      setStep('leaderboard')
+    } catch (error) {
+      setDataError(errorMessage(error))
     }
   }
 
@@ -365,7 +408,16 @@ function App() {
   }
 
   if (step === 'name') {
-    return <NameScreen error={dataError} room={activeRoom} onBack={() => setStep('gate')} onReady={loadExistingBracket} />
+    return (
+      <NameScreen
+        error={dataError}
+        existingNames={existingNameOptions}
+        room={activeRoom}
+        onBack={() => setStep('gate')}
+        onReady={loadExistingBracket}
+        onViewLeaderboard={viewLeaderboardOnly}
+      />
+    )
   }
 
   if (step === 'rulesIntro') {
@@ -382,6 +434,7 @@ function App() {
         onNavigate={setStep}
         onReset={() => setStep('gate')}
         onResultsModeChange={setResultsMode}
+        leaderboardOnly={leaderboardOnly}
         showBoard={Boolean(currentSubmission)}
       />
 
@@ -458,17 +511,32 @@ function GateScreen({ onEnter }: { onEnter: (roomSlug: string, passcode: string)
 
 function NameScreen({
   error,
+  existingNames,
   room,
   onBack,
   onReady,
+  onViewLeaderboard,
 }: {
   error: string
+  existingNames: string[]
   room: Room
   onBack: () => void
   onReady: (session: RoomSession) => void | Promise<void>
+  onViewLeaderboard: () => void | Promise<void>
 }) {
   const [name, setName] = useState('')
   const [formError, setFormError] = useState('')
+  const trimmedName = name.trim()
+
+  const continueWithName = () => {
+    if (!trimmedName) {
+      setFormError('Name required.')
+      return
+    }
+
+    setFormError('')
+    void onReady({ roomSlug: room.slug, ownerName: trimmedName })
+  }
 
   return (
     <main className="onboarding-screen">
@@ -479,34 +547,59 @@ function NameScreen({
           <User size={17} />
           <input
             autoFocus
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value)
+              setFormError('')
+            }}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && name.trim()) {
-                void onReady({ roomSlug: room.slug, ownerName: name.trim() })
-              }
+              if (event.key === 'Enter') continueWithName()
             }}
             placeholder="Name"
             value={name}
           />
         </div>
+        {existingNames.length > 0 && (
+          <div className="dark-input-row">
+            <User size={17} />
+            <select
+              aria-label="Existing submissions"
+              onChange={(event) => {
+                setName(event.target.value)
+                setFormError('')
+              }}
+              value={existingNames.includes(name) ? name : ''}
+            >
+              <option value="">Existing submissions</option>
+              {existingNames.map((existingName) => (
+                <option key={existingName} value={existingName}>
+                  {existingName}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="onboarding-actions">
           <button className="ghost-button" onClick={onBack} type="button">
             Back
           </button>
           <button
             className="solid-button"
-            onClick={() => {
-              if (!name.trim()) {
-                setFormError('Name required.')
-                return
-              }
-              void onReady({ roomSlug: room.slug, ownerName: name.trim() })
-            }}
+            onClick={continueWithName}
             type="button"
           >
             Continue
           </button>
         </div>
+        <button
+          className="ghost-button full"
+          onClick={() => {
+            void onViewLeaderboard()
+          }}
+          type="button"
+        >
+          <Table2 size={16} />
+          View leaderboard
+        </button>
         {(formError || error) && <p className="form-error">{formError || error}</p>}
       </section>
     </main>
@@ -563,6 +656,7 @@ function AppHeader({
   onNavigate,
   onResultsModeChange,
   onReset,
+  leaderboardOnly,
   showBoard,
 }: {
   activeRoom: Room
@@ -572,6 +666,7 @@ function AppHeader({
   onNavigate: (step: AppStep) => void
   onResultsModeChange: (mode: ResultsMode) => void
   onReset: () => void
+  leaderboardOnly: boolean
   showBoard: boolean
 }) {
   return (
@@ -581,7 +676,7 @@ function AppHeader({
         <strong>{activeRoom.name}</strong>
       </button>
       <div className="header-meta">
-        <span>{roomSession?.ownerName}</span>
+        {roomSession?.ownerName && <span>{roomSession.ownerName}</span>}
         <span>
           <Lock size={13} />
           Jun 11
@@ -589,11 +684,7 @@ function AppHeader({
       </div>
       <ResultsModeControl mode={resultsMode} onChange={onResultsModeChange} />
       <nav className="dark-tabs" aria-label="Primary">
-        <button className={step === 'build' ? 'active' : ''} onClick={() => onNavigate('build')} type="button">
-          {showBoard ? <FileCheck2 size={16} /> : <PencilLine size={16} />}
-          {showBoard ? 'My Submission' : 'Build'}
-        </button>
-        {showBoard && (
+        {leaderboardOnly ? (
           <button
             className={step === 'leaderboard' ? 'active' : ''}
             onClick={() => onNavigate('leaderboard')}
@@ -602,6 +693,23 @@ function AppHeader({
             <Table2 size={16} />
             Leaderboard
           </button>
+        ) : (
+          <>
+            <button className={step === 'build' ? 'active' : ''} onClick={() => onNavigate('build')} type="button">
+              {showBoard ? <FileCheck2 size={16} /> : <PencilLine size={16} />}
+              {showBoard ? 'My Submission' : 'Build'}
+            </button>
+            {showBoard && (
+              <button
+                className={step === 'leaderboard' ? 'active' : ''}
+                onClick={() => onNavigate('leaderboard')}
+                type="button"
+              >
+                <Table2 size={16} />
+                Leaderboard
+              </button>
+            )}
+          </>
         )}
       </nav>
     </header>
@@ -1637,7 +1745,7 @@ function LeaderboardPanel({
                       {championId && <ChampionFlag teamId={championId} />}
                       {entry.submission.ownerName}
                     </strong>
-                    <small>{entry.submission.source === 'local' ? 'Your picks' : 'Demo picks'}</small>
+                    <small>{submissionSourceLabel(entry.submission.source)}</small>
                   </span>
                   <span className="leader-stat optional">
                     <strong>{entry.score.groupAdvancement}</strong>

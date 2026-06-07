@@ -133,12 +133,23 @@
   margin-bottom: 10px;
 }
 
-.dark-input-row input {
+.dark-input-row input,
+.dark-input-row select {
   flex: 1;
   min-width: 0;
   border: 0;
   outline: 0;
   background: transparent;
+  color: var(--text);
+}
+
+.dark-input-row select {
+  cursor: pointer;
+  appearance: none;
+}
+
+.dark-input-row option {
+  background: #050505;
   color: var(--text);
 }
 
