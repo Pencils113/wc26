@@ -2,17 +2,11 @@ import type { BracketSubmission } from '../types'
 
 const STORAGE_KEY = 'world-cup-26-brackets:v1'
 const SESSION_KEY = 'world-cup-26-session:v1'
-const PENDING_EMAIL_AUTH_KEY = 'world-cup-26-pending-email-auth:v1'
 
 export interface StoredRoomSession {
   roomSlug: string
   ownerName: string
   ownerEmail?: string
-}
-
-export interface PendingEmailAuth {
-  roomSlug: string
-  ownerEmail: string
 }
 
 export const loadLocalSubmissions = (): BracketSubmission[] => {
@@ -62,24 +56,4 @@ export const saveStoredRoomSession = (session: StoredRoomSession) => {
   } catch {
     window.localStorage.setItem(SESSION_KEY, JSON.stringify({ [session.roomSlug]: session }))
   }
-}
-
-export const loadPendingEmailAuth = (): PendingEmailAuth | null => {
-  try {
-    const raw = window.localStorage.getItem(PENDING_EMAIL_AUTH_KEY)
-    if (!raw) return null
-
-    const parsed = JSON.parse(raw) as PendingEmailAuth
-    return parsed.roomSlug && parsed.ownerEmail ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-export const savePendingEmailAuth = (pendingAuth: PendingEmailAuth) => {
-  window.localStorage.setItem(PENDING_EMAIL_AUTH_KEY, JSON.stringify(pendingAuth))
-}
-
-export const clearPendingEmailAuth = () => {
-  window.localStorage.removeItem(PENDING_EMAIL_AUTH_KEY)
 }

@@ -17,7 +17,7 @@ export type GroupId = (typeof GROUP_IDS)[number]
 export type TeamId = string
 export type MatchId = string
 
-export type RoomAuthMode = 'email_otp' | 'room_password'
+export type RoomAuthMode = 'room_password'
 
 export interface Room {
   slug: string
@@ -26,7 +26,6 @@ export interface Room {
   authMode: RoomAuthMode
   lockAt: string
   passwordHint?: string
-  emailDomain?: string
 }
 
 export interface PlayerNote {

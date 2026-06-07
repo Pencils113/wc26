@@ -4,9 +4,9 @@ export const rooms: Room[] = [
   {
     slug: 'conway',
     name: 'Conway',
-    description: 'One verified @conway.ai entry per person.',
-    authMode: 'email_otp',
-    emailDomain: 'conway.ai',
+    description: 'Company prediction room.',
+    authMode: 'room_password',
+    passwordHint: 'Pass code',
     lockAt: '2026-06-11T18:00:00.000Z',
   },
   {

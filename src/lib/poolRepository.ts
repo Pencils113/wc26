@@ -1,6 +1,5 @@
 import { emptyActualResults } from '../data/results'
 import type { ActualResults, BracketPicks, BracketSubmission, Room } from '../types'
-import { formatEmailName } from './bracket'
 import { hasSupabaseConfig, requireSupabase, supabase } from './supabaseClient'
 
 interface BracketSubmissionRow {
@@ -66,15 +65,6 @@ export const submitRemoteBracket = async ({
 }: RemoteSubmitInput) => {
   const client = requireSupabase()
 
-  if (room.authMode === 'email_otp') {
-    const { error } = await client.rpc('submit_conway_bracket', {
-      room_slug: room.slug,
-      picks,
-    })
-    if (error) throw error
-    return
-  }
-
   const { error } = await client.rpc('submit_password_room_bracket', {
     room_slug: room.slug,
     room_password: roomPasscode,
@@ -83,52 +73,6 @@ export const submitRemoteBracket = async ({
   })
 
   if (error) throw error
-}
-
-export const sendRemoteEmailCode = async (email: string, emailRedirectTo?: string) => {
-  const client = requireSupabase()
-  const { error } = await client.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo,
-      shouldCreateUser: true,
-    },
-  })
-
-  if (error) throw error
-}
-
-export const verifyRemoteEmailCode = async (email: string, token: string) => {
-  const client = requireSupabase()
-  const { data, error } = await client.auth.verifyOtp({
-    email,
-    token,
-    type: 'email',
-  })
-
-  if (error) throw error
-
-  const verifiedEmail = data.user?.email?.toLowerCase() ?? email.toLowerCase()
-
-  return {
-    ownerEmail: verifiedEmail,
-    ownerName: formatEmailName(verifiedEmail),
-  }
-}
-
-export const getRemoteEmailSession = async () => {
-  const client = requireSupabase()
-  const { data, error } = await client.auth.getSession()
-
-  if (error) throw error
-
-  const email = data.session?.user.email?.toLowerCase()
-  if (!email) return null
-
-  return {
-    ownerEmail: email,
-    ownerName: formatEmailName(email),
-  }
 }
 
 export const subscribeToRemotePoolUpdates = (onUpdate: () => void) => {

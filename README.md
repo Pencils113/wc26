@@ -2,7 +2,7 @@
 
 A small, static World Cup bracket pool for friends, family, and the Conway room.
 
-The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It runs with local mock storage when Supabase credentials are absent, and switches to Supabase for submissions, Conway email sign-in, results, and realtime leaderboard refresh when credentials are configured.
+The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It runs with local mock storage when Supabase credentials are absent, and switches to Supabase for submissions, results, and realtime leaderboard refresh when credentials are configured.
 
 ## Local Development
 
@@ -31,10 +31,9 @@ The npm scripts call package entrypoints directly because this local npm shell w
 
 ## Current App Behavior
 
-- Pass code `conway` routes to the Conway email sign-in flow.
+- Pass code `conway` routes to the Conway name-pick flow.
 - Pass code `larooch` routes to the family name-pick flow.
-- Conway room uses Supabase's default magic-link email for `@conway.ai` when configured; otherwise it uses the local mock email-code flow.
-- Larooch uses the passcode/name flow. With Supabase configured, the passcode is checked by the `submit_password_room_bracket` RPC.
+- Conway and Larooch both use the passcode/name flow. With Supabase configured, the passcode is checked by the `submit_password_room_bracket` RPC.
 - Room identity is saved to browser `localStorage`.
 - Bracket submissions are saved to Supabase when configured, otherwise to browser `localStorage`.
 - Returning users with a saved submission land on their frozen bracket after entering the pass code.
@@ -53,6 +52,7 @@ Supabase artifacts live in `supabase/`. For the Supabase SQL editor, run these f
 4. `supabase/02c_larooch_rpc.sql`
 5. `supabase/02d_grants.sql`
 6. `supabase/03_seed_and_realtime.sql`
+7. `supabase/04_open_conway_room.sql`
 
 `supabase/schema.sql` and `supabase/02_security_and_api.sql` contain combined setup for CLI-style workflows, but the split-file path is safer in the Supabase SQL editor.
 
@@ -64,15 +64,15 @@ The schema creates:
 - `actual_results`
 - `results_sync_runs`
 - `bracket_submissions` read view
-- RPCs for `submit_conway_bracket` and `submit_password_room_bracket`
+- RPC for `submit_password_room_bracket`, plus the legacy unused `submit_conway_bracket`
 - Realtime publication entries for brackets/results
+
+If you already applied the schema before Conway became an open room, just run `supabase/04_open_conway_room.sql` in the Supabase SQL editor.
 
 After applying the schema:
 
-1. In Supabase Auth, keep email sign-in enabled. The default magic-link email is fine.
-2. Add your GitHub Pages URL to Auth redirect URLs.
-3. Confirm the seeded `conway` and `larooch` rooms have the passcodes/domains you want.
-4. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in GitHub repository secrets.
+1. Confirm the seeded `conway` and `larooch` rooms have the passcodes you want.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in GitHub repository secrets.
 
 Required GitHub secrets for deploy/update workflows:
 

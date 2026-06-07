@@ -4,10 +4,8 @@ import {
   GripVertical,
   Info,
   Lock,
-  Mail,
   PencilLine,
   Save,
-  ShieldCheck,
   Table2,
   Trophy,
   User,
@@ -22,7 +20,6 @@ import { teamsByGroup, teamsById } from './data/teams'
 import {
   buildResolvedBracket,
   createInitialPicks,
-  formatEmailName,
   getChampion,
   getFlagUrl,
   getGroupWinners,
@@ -39,19 +36,13 @@ import { getActualTeamMapStages, getPredictionTeamMapStages } from './lib/mapPro
 import {
   fetchRemoteActualResults,
   fetchRemoteSubmissions,
-  getRemoteEmailSession,
-  sendRemoteEmailCode,
   submitRemoteBracket,
   subscribeToRemotePoolUpdates,
-  verifyRemoteEmailCode,
 } from './lib/poolRepository'
 import { sampleSubmissions } from './lib/sampleSubmissions'
 import {
-  clearPendingEmailAuth,
-  loadPendingEmailAuth,
   loadLocalSubmissions,
   loadStoredRoomSession,
-  savePendingEmailAuth,
   saveLocalSubmissions,
   saveStoredRoomSession,
   upsertLocalSubmission,
@@ -59,7 +50,7 @@ import {
 import { hasSupabaseConfig } from './lib/supabaseClient'
 import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type Room, type TeamId } from './types'
 
-type AppStep = 'gate' | 'name' | 'email' | 'rulesIntro' | 'build' | 'leaderboard'
+type AppStep = 'gate' | 'name' | 'rulesIntro' | 'build' | 'leaderboard'
 type ResultsMode = 'pre' | 'demo'
 
 interface RoomSession {
@@ -191,13 +182,6 @@ const errorMessage = (error: unknown) => {
   return 'Something went wrong.'
 }
 
-const getCurrentAppUrl = () => {
-  const url = new URL(window.location.href)
-  url.search = ''
-  url.hash = ''
-  return url.toString()
-}
-
 function App() {
   const [step, setStep] = useState<AppStep>('gate')
   const [selectedRoomSlug, setSelectedRoomSlug] = useState<string | null>(null)
@@ -238,77 +222,6 @@ function App() {
   useEffect(() => {
     saveLocalSubmissions(localSubmissions)
   }, [localSubmissions])
-
-  useEffect(() => {
-    if (!hasSupabaseConfig) return undefined
-
-    let cancelled = false
-    let attempts = 0
-    let retryId: number | undefined
-
-    const finishPendingEmailAuth = async () => {
-      const pendingAuth = loadPendingEmailAuth()
-      if (!pendingAuth) return
-
-      try {
-        const verified = await getRemoteEmailSession()
-        if (!verified) {
-          attempts += 1
-          if (!cancelled && attempts < 10) {
-            retryId = window.setTimeout(() => {
-              void finishPendingEmailAuth()
-            }, 500)
-          }
-          return
-        }
-        if (cancelled) return
-
-        const room = roomBySlug[pendingAuth.roomSlug]
-        if (!room || room.authMode !== 'email_otp') return
-
-        const expectedDomain = room.emailDomain ?? 'conway.ai'
-        if (verified.ownerEmail !== pendingAuth.ownerEmail || !verified.ownerEmail.endsWith(`@${expectedDomain}`)) return
-
-        const session = {
-          roomSlug: room.slug,
-          ownerEmail: verified.ownerEmail,
-          ownerName: verified.ownerName,
-        }
-        const roomSubmissions = await fetchRemoteSubmissions(room.slug)
-        if (cancelled) return
-
-        const existing = findSubmissionForSession(roomSubmissions, room.slug, session)
-
-        setSelectedRoomSlug(room.slug)
-        setRoomPasscode(room.slug)
-        setRemoteSubmissions(roomSubmissions)
-        setPreviewSubmission(null)
-        saveStoredRoomSession(session)
-        setRoomSession(session)
-        setPicks(
-          existing
-            ? {
-                groupOrder: existing.groupOrder,
-                thirdPlaceAdvancers: existing.thirdPlaceAdvancers,
-                knockoutWinners: existing.knockoutWinners,
-              }
-            : createInitialPicks(),
-        )
-        setDataError('')
-        setStep(existing ? 'build' : 'rulesIntro')
-        clearPendingEmailAuth()
-      } catch (error) {
-        if (!cancelled) setDataError(errorMessage(error))
-      }
-    }
-
-    void finishPendingEmailAuth()
-
-    return () => {
-      cancelled = true
-      if (retryId) window.clearTimeout(retryId)
-    }
-  }, [])
 
   useEffect(() => {
     if (!hasSupabaseConfig || !selectedRoomSlug) return undefined
@@ -353,7 +266,6 @@ function App() {
   }
 
   const beginRoom = (roomSlug: string, enteredPasscode: string) => {
-    const room = roomBySlug[roomSlug]
     const storedSession = loadStoredRoomSession(roomSlug)
 
     setSelectedRoomSlug(roomSlug)
@@ -368,7 +280,7 @@ function App() {
 
     setRoomSession(null)
     setPicks(createInitialPicks())
-    setStep(room.authMode === 'email_otp' ? 'email' : 'name')
+    setStep('name')
   }
 
   const loadExistingBracket = async (session: RoomSession) => {
@@ -393,7 +305,7 @@ function App() {
       setDataError(errorMessage(error))
       setRoomSession(null)
       setPicks(createInitialPicks())
-      setStep(roomBySlug[session.roomSlug].authMode === 'email_otp' ? 'email' : 'name')
+      setStep('name')
     }
   }
 
@@ -462,12 +374,8 @@ function App() {
     return <NameScreen error={dataError} room={activeRoom} onBack={() => setStep('gate')} onReady={loadExistingBracket} />
   }
 
-  if (step === 'email') {
-    return <EmailScreen error={dataError} room={activeRoom} onBack={() => setStep('gate')} onReady={loadExistingBracket} />
-  }
-
   if (step === 'rulesIntro') {
-    return <RulesIntroScreen room={activeRoom} onBack={() => setStep(activeRoom.authMode === 'email_otp' ? 'email' : 'name')} onStart={() => setStep('build')} />
+    return <RulesIntroScreen room={activeRoom} onBack={() => setStep('name')} onStart={() => setStep('build')} />
   }
 
   return (
@@ -605,135 +513,6 @@ function NameScreen({
             type="button"
           >
             Continue
-          </button>
-        </div>
-        {(formError || error) && <p className="form-error">{formError || error}</p>}
-      </section>
-    </main>
-  )
-}
-
-function EmailScreen({
-  error,
-  room,
-  onBack,
-  onReady,
-}: {
-  error: string
-  room: Room
-  onBack: () => void
-  onReady: (session: RoomSession) => void | Promise<void>
-}) {
-  const expectedDomain = room.emailDomain ?? 'conway.ai'
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [sent, setSent] = useState(false)
-  const [formError, setFormError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const usesMagicLink = hasSupabaseConfig
-
-  const sendCode = async () => {
-    const normalized = email.trim().toLowerCase()
-    if (!normalized.endsWith(`@${expectedDomain}`)) {
-      setFormError(`Use an @${expectedDomain} address.`)
-      return
-    }
-
-    setBusy(true)
-    setFormError('')
-
-    try {
-      if (hasSupabaseConfig) {
-        await sendRemoteEmailCode(normalized, getCurrentAppUrl())
-        savePendingEmailAuth({ roomSlug: room.slug, ownerEmail: normalized })
-      }
-      setSent(true)
-    } catch (error) {
-      setFormError(errorMessage(error))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const verify = async () => {
-    const normalized = email.trim().toLowerCase()
-    if (code.trim().length < 4) {
-      setFormError('Enter the email code.')
-      return
-    }
-
-    setBusy(true)
-    setFormError('')
-
-    try {
-      const verified = hasSupabaseConfig
-        ? await verifyRemoteEmailCode(normalized, code.trim())
-        : {
-            ownerEmail: normalized,
-            ownerName: formatEmailName(normalized),
-          }
-
-      await onReady({
-        roomSlug: room.slug,
-        ownerEmail: verified.ownerEmail,
-        ownerName: verified.ownerName,
-      })
-    } catch (error) {
-      setFormError(errorMessage(error))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <main className="onboarding-screen">
-      <section className="onboarding-card">
-        <p className="kicker">{room.name}</p>
-        <h1>Verify email.</h1>
-        <div className="dark-input-row">
-          <Mail size={17} />
-          <input
-            autoFocus
-            inputMode="email"
-            onChange={(event) => setEmail(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void sendCode()
-            }}
-            placeholder={`name@${expectedDomain}`}
-            type="email"
-            value={email}
-          />
-        </div>
-        {sent && usesMagicLink && (
-          <p className="form-hint">
-            Check your email and click the sign-in link. This page will finish setup when you return.
-          </p>
-        )}
-        {sent && !usesMagicLink && (
-          <div className="dark-input-row">
-            <ShieldCheck size={17} />
-            <input
-              inputMode="numeric"
-              onChange={(event) => setCode(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void verify()
-              }}
-              placeholder="Email code"
-              value={code}
-            />
-          </div>
-        )}
-        <div className="onboarding-actions">
-          <button className="ghost-button" onClick={onBack} type="button">
-            Back
-          </button>
-          <button
-            className="solid-button"
-            disabled={busy}
-            onClick={() => void (sent && !usesMagicLink ? verify() : sendCode())}
-            type="button"
-          >
-            {busy ? 'Working...' : sent ? (usesMagicLink ? 'Resend link' : 'Verify') : usesMagicLink ? 'Send link' : 'Send code'}
           </button>
         </div>
         {(formError || error) && <p className="form-error">{formError || error}</p>}
