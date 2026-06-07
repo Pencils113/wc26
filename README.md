@@ -2,7 +2,7 @@
 
 A small, static World Cup bracket pool for friends, family, and the Conway room.
 
-The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It runs with local mock storage when Supabase credentials are absent, and switches to Supabase for submissions, Conway email OTP, results, and realtime leaderboard refresh when credentials are configured.
+The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It runs with local mock storage when Supabase credentials are absent, and switches to Supabase for submissions, Conway email sign-in, results, and realtime leaderboard refresh when credentials are configured.
 
 ## Local Development
 
@@ -31,9 +31,9 @@ The npm scripts call package entrypoints directly because this local npm shell w
 
 ## Current App Behavior
 
-- Pass code `conway` routes to the Conway email-code flow.
+- Pass code `conway` routes to the Conway email sign-in flow.
 - Pass code `larooch` routes to the family name-pick flow.
-- Conway room uses Supabase email OTP for `@conway.ai` when configured; otherwise it uses the local mock email-code flow.
+- Conway room uses Supabase's default magic-link email for `@conway.ai` when configured; otherwise it uses the local mock email-code flow.
 - Larooch uses the passcode/name flow. With Supabase configured, the passcode is checked by the `submit_password_room_bracket` RPC.
 - Room identity is saved to browser `localStorage`.
 - Bracket submissions are saved to Supabase when configured, otherwise to browser `localStorage`.
@@ -69,7 +69,7 @@ The schema creates:
 
 After applying the schema:
 
-1. In Supabase Auth, enable email OTP.
+1. In Supabase Auth, keep email sign-in enabled. The default magic-link email is fine.
 2. Add your GitHub Pages URL to Auth redirect URLs.
 3. Confirm the seeded `conway` and `larooch` rooms have the passcodes/domains you want.
 4. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in GitHub repository secrets.

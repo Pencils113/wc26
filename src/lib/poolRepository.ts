@@ -115,6 +115,21 @@ export const verifyRemoteEmailCode = async (email: string, token: string) => {
   }
 }
 
+export const getRemoteEmailSession = async () => {
+  const client = requireSupabase()
+  const { data, error } = await client.auth.getSession()
+
+  if (error) throw error
+
+  const email = data.session?.user.email?.toLowerCase()
+  if (!email) return null
+
+  return {
+    ownerEmail: email,
+    ownerName: formatEmailName(email),
+  }
+}
+
 export const subscribeToRemotePoolUpdates = (onUpdate: () => void) => {
   if (!hasSupabaseConfig || !supabase) return () => undefined
 

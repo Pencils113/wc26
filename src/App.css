@@ -89,6 +89,13 @@
   font-size: 13px;
 }
 
+.form-hint {
+  margin: -2px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .onboarding-card,
 .rules-intro-card {
   padding: 22px;

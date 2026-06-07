@@ -39,6 +39,7 @@ import { getActualTeamMapStages, getPredictionTeamMapStages } from './lib/mapPro
 import {
   fetchRemoteActualResults,
   fetchRemoteSubmissions,
+  getRemoteEmailSession,
   sendRemoteEmailCode,
   submitRemoteBracket,
   subscribeToRemotePoolUpdates,
@@ -46,8 +47,11 @@ import {
 } from './lib/poolRepository'
 import { sampleSubmissions } from './lib/sampleSubmissions'
 import {
+  clearPendingEmailAuth,
+  loadPendingEmailAuth,
   loadLocalSubmissions,
   loadStoredRoomSession,
+  savePendingEmailAuth,
   saveLocalSubmissions,
   saveStoredRoomSession,
   upsertLocalSubmission,
@@ -227,6 +231,77 @@ function App() {
   useEffect(() => {
     saveLocalSubmissions(localSubmissions)
   }, [localSubmissions])
+
+  useEffect(() => {
+    if (!hasSupabaseConfig) return undefined
+
+    let cancelled = false
+    let attempts = 0
+    let retryId: number | undefined
+
+    const finishPendingEmailAuth = async () => {
+      const pendingAuth = loadPendingEmailAuth()
+      if (!pendingAuth) return
+
+      try {
+        const verified = await getRemoteEmailSession()
+        if (!verified) {
+          attempts += 1
+          if (!cancelled && attempts < 10) {
+            retryId = window.setTimeout(() => {
+              void finishPendingEmailAuth()
+            }, 500)
+          }
+          return
+        }
+        if (cancelled) return
+
+        const room = roomBySlug[pendingAuth.roomSlug]
+        if (!room || room.authMode !== 'email_otp') return
+
+        const expectedDomain = room.emailDomain ?? 'conway.ai'
+        if (verified.ownerEmail !== pendingAuth.ownerEmail || !verified.ownerEmail.endsWith(`@${expectedDomain}`)) return
+
+        const session = {
+          roomSlug: room.slug,
+          ownerEmail: verified.ownerEmail,
+          ownerName: verified.ownerName,
+        }
+        const roomSubmissions = await fetchRemoteSubmissions(room.slug)
+        if (cancelled) return
+
+        const existing = findSubmissionForSession(roomSubmissions, room.slug, session)
+
+        setSelectedRoomSlug(room.slug)
+        setRoomPasscode(room.slug)
+        setRemoteSubmissions(roomSubmissions)
+        setPreviewSubmission(null)
+        saveStoredRoomSession(session)
+        setRoomSession(session)
+        setPicks(
+          existing
+            ? {
+                groupOrder: existing.groupOrder,
+                thirdPlaceAdvancers: existing.thirdPlaceAdvancers,
+                knockoutWinners: existing.knockoutWinners,
+              }
+            : createInitialPicks(),
+        )
+        setDataError('')
+        setStep(existing ? 'build' : 'rulesIntro')
+        clearPendingEmailAuth()
+      } catch (error) {
+        if (!cancelled) setDataError(errorMessage(error))
+      }
+    }
+
+    void finishPendingEmailAuth()
+
+    return () => {
+      cancelled = true
+      if (retryId) window.clearTimeout(retryId)
+    }
+  }, [])
 
   useEffect(() => {
     if (!hasSupabaseConfig || !selectedRoomSlug) return undefined
@@ -548,6 +623,7 @@ function EmailScreen({
   const [sent, setSent] = useState(false)
   const [formError, setFormError] = useState('')
   const [busy, setBusy] = useState(false)
+  const usesMagicLink = hasSupabaseConfig
 
   const sendCode = async () => {
     const normalized = email.trim().toLowerCase()
@@ -562,6 +638,7 @@ function EmailScreen({
     try {
       if (hasSupabaseConfig) {
         await sendRemoteEmailCode(normalized)
+        savePendingEmailAuth({ roomSlug: room.slug, ownerEmail: normalized })
       }
       setSent(true)
     } catch (error) {
@@ -620,7 +697,12 @@ function EmailScreen({
             value={email}
           />
         </div>
-        {sent && (
+        {sent && usesMagicLink && (
+          <p className="form-hint">
+            Check your email and click the sign-in link. This page will finish setup when you return.
+          </p>
+        )}
+        {sent && !usesMagicLink && (
           <div className="dark-input-row">
             <ShieldCheck size={17} />
             <input
@@ -638,8 +720,13 @@ function EmailScreen({
           <button className="ghost-button" onClick={onBack} type="button">
             Back
           </button>
-          <button className="solid-button" disabled={busy} onClick={() => void (sent ? verify() : sendCode())} type="button">
-            {busy ? 'Working...' : sent ? 'Verify' : 'Send code'}
+          <button
+            className="solid-button"
+            disabled={busy}
+            onClick={() => void (sent && !usesMagicLink ? verify() : sendCode())}
+            type="button"
+          >
+            {busy ? 'Working...' : sent ? (usesMagicLink ? 'Resend link' : 'Verify') : usesMagicLink ? 'Send link' : 'Send code'}
           </button>
         </div>
         {(formError || error) && <p className="form-error">{formError || error}</p>}
