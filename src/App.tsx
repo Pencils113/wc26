@@ -121,37 +121,107 @@ const KNOCKOUT_TIMES: Record<string, string> = {
   M104: '3:00 PM ET',
 }
 
-const OPENING_FIXTURES = [
-  { id: 'G-A1', date: 'Jun 11', time: '8:00 PM ET', venue: 'Mexico City', teams: ['mexico', 'south-africa'] as [TeamId, TeamId] },
-  { id: 'G-B1', date: 'Jun 12', time: '8:00 PM ET', venue: 'Toronto', teams: ['canada', 'bosnia-herzegovina'] as [TeamId, TeamId] },
-  { id: 'G-D1', date: 'Jun 12', time: '9:00 PM ET', venue: 'Los Angeles', teams: ['united-states', 'paraguay'] as [TeamId, TeamId] },
-  { id: 'G-C1', date: 'Jun 13', time: '6:00 PM ET', venue: 'Miami', teams: ['brazil', 'morocco'] as [TeamId, TeamId] },
+type GroupStageFixtureDefinition = readonly [
+  id: string,
+  group: GroupId,
+  isoUtc: string,
+  venue: string,
+  teams: readonly [TeamId, TeamId],
 ]
 
-const GROUP_FIXTURE_PAIRINGS = [
-  [0, 1],
-  [2, 3],
-  [0, 2],
-  [1, 3],
-  [0, 3],
-  [1, 2],
-] as const
+const GROUP_STAGE_FIXTURES = [
+  ['G01', 'A', '2026-06-11T19:00:00Z', 'Estadio Banorte', ['mexico', 'south-africa']],
+  ['G02', 'A', '2026-06-12T02:00:00Z', 'Estadio Akron', ['korea-republic', 'czechia']],
+  ['G03', 'B', '2026-06-12T19:00:00Z', 'BMO Field', ['canada', 'bosnia-herzegovina']],
+  ['G04', 'D', '2026-06-13T01:00:00Z', 'SoFi Stadium', ['united-states', 'paraguay']],
+  ['G05', 'B', '2026-06-13T19:00:00Z', "Levi's Stadium", ['qatar', 'switzerland']],
+  ['G06', 'C', '2026-06-13T22:00:00Z', 'MetLife Stadium', ['brazil', 'morocco']],
+  ['G07', 'C', '2026-06-14T01:00:00Z', 'Gillette Stadium', ['haiti', 'scotland']],
+  ['G08', 'D', '2026-06-14T04:00:00Z', 'BC Place', ['australia', 'turkiye']],
+  ['G09', 'E', '2026-06-14T17:00:00Z', 'NRG Stadium', ['germany', 'curacao']],
+  ['G10', 'F', '2026-06-14T20:00:00Z', 'AT&T Stadium', ['netherlands', 'japan']],
+  ['G11', 'E', '2026-06-14T23:00:00Z', 'Lincoln Financial Field', ['cote-divoire', 'ecuador']],
+  ['G12', 'F', '2026-06-15T02:00:00Z', 'Estadio BBVA', ['sweden', 'tunisia']],
+  ['G13', 'H', '2026-06-15T16:00:00Z', 'Mercedes-Benz Stadium', ['spain', 'cabo-verde']],
+  ['G14', 'G', '2026-06-15T19:00:00Z', 'Lumen Field', ['belgium', 'egypt']],
+  ['G15', 'H', '2026-06-15T22:00:00Z', 'Hard Rock Stadium', ['saudi-arabia', 'uruguay']],
+  ['G16', 'G', '2026-06-16T01:00:00Z', 'SoFi Stadium', ['iran', 'new-zealand']],
+  ['G17', 'I', '2026-06-16T19:00:00Z', 'MetLife Stadium', ['france', 'senegal']],
+  ['G18', 'I', '2026-06-16T22:00:00Z', 'Gillette Stadium', ['iraq', 'norway']],
+  ['G19', 'J', '2026-06-17T01:00:00Z', 'GEHA Field at Arrowhead Stadium', ['argentina', 'algeria']],
+  ['G20', 'J', '2026-06-17T04:00:00Z', "Levi's Stadium", ['austria', 'jordan']],
+  ['G21', 'K', '2026-06-17T17:00:00Z', 'NRG Stadium', ['portugal', 'congo-dr']],
+  ['G22', 'L', '2026-06-17T20:00:00Z', 'AT&T Stadium', ['england', 'croatia']],
+  ['G23', 'L', '2026-06-17T23:00:00Z', 'BMO Field', ['ghana', 'panama']],
+  ['G24', 'K', '2026-06-18T02:00:00Z', 'Estadio Banorte', ['uzbekistan', 'colombia']],
+  ['G25', 'A', '2026-06-18T16:00:00Z', 'Mercedes-Benz Stadium', ['czechia', 'south-africa']],
+  ['G26', 'B', '2026-06-18T19:00:00Z', 'SoFi Stadium', ['switzerland', 'bosnia-herzegovina']],
+  ['G27', 'B', '2026-06-18T22:00:00Z', 'BC Place', ['canada', 'qatar']],
+  ['G28', 'A', '2026-06-19T01:00:00Z', 'Estadio Akron', ['mexico', 'korea-republic']],
+  ['G29', 'D', '2026-06-19T19:00:00Z', 'Lumen Field', ['united-states', 'australia']],
+  ['G30', 'C', '2026-06-19T22:00:00Z', 'Gillette Stadium', ['scotland', 'morocco']],
+  ['G31', 'C', '2026-06-20T00:30:00Z', 'Lincoln Financial Field', ['brazil', 'haiti']],
+  ['G32', 'D', '2026-06-20T03:00:00Z', "Levi's Stadium", ['turkiye', 'paraguay']],
+  ['G33', 'F', '2026-06-20T17:00:00Z', 'NRG Stadium', ['netherlands', 'sweden']],
+  ['G34', 'E', '2026-06-20T20:00:00Z', 'BMO Field', ['germany', 'cote-divoire']],
+  ['G35', 'E', '2026-06-21T00:00:00Z', 'GEHA Field at Arrowhead Stadium', ['ecuador', 'curacao']],
+  ['G36', 'F', '2026-06-21T04:00:00Z', 'Estadio BBVA', ['tunisia', 'japan']],
+  ['G37', 'H', '2026-06-21T16:00:00Z', 'Mercedes-Benz Stadium', ['spain', 'saudi-arabia']],
+  ['G38', 'G', '2026-06-21T19:00:00Z', 'SoFi Stadium', ['belgium', 'iran']],
+  ['G39', 'H', '2026-06-21T22:00:00Z', 'Hard Rock Stadium', ['uruguay', 'cabo-verde']],
+  ['G40', 'G', '2026-06-22T01:00:00Z', 'BC Place', ['new-zealand', 'egypt']],
+  ['G41', 'J', '2026-06-22T17:00:00Z', 'AT&T Stadium', ['argentina', 'austria']],
+  ['G42', 'I', '2026-06-22T21:00:00Z', 'Lincoln Financial Field', ['france', 'iraq']],
+  ['G43', 'I', '2026-06-23T00:00:00Z', 'MetLife Stadium', ['norway', 'senegal']],
+  ['G44', 'J', '2026-06-23T03:00:00Z', "Levi's Stadium", ['jordan', 'algeria']],
+  ['G45', 'K', '2026-06-23T17:00:00Z', 'NRG Stadium', ['portugal', 'uzbekistan']],
+  ['G46', 'L', '2026-06-23T20:00:00Z', 'Gillette Stadium', ['england', 'ghana']],
+  ['G47', 'L', '2026-06-23T23:00:00Z', 'BMO Field', ['panama', 'croatia']],
+  ['G48', 'K', '2026-06-24T02:00:00Z', 'Estadio Akron', ['colombia', 'congo-dr']],
+  ['G49', 'B', '2026-06-24T19:00:00Z', 'Lumen Field', ['bosnia-herzegovina', 'qatar']],
+  ['G50', 'B', '2026-06-24T19:00:00Z', 'BC Place', ['switzerland', 'canada']],
+  ['G51', 'C', '2026-06-24T22:00:00Z', 'Mercedes-Benz Stadium', ['morocco', 'haiti']],
+  ['G52', 'C', '2026-06-24T22:00:00Z', 'Hard Rock Stadium', ['scotland', 'brazil']],
+  ['G53', 'A', '2026-06-25T01:00:00Z', 'Estadio Banorte', ['czechia', 'mexico']],
+  ['G54', 'A', '2026-06-25T01:00:00Z', 'Estadio BBVA', ['south-africa', 'korea-republic']],
+  ['G55', 'E', '2026-06-25T20:00:00Z', 'Lincoln Financial Field', ['curacao', 'cote-divoire']],
+  ['G56', 'E', '2026-06-25T20:00:00Z', 'MetLife Stadium', ['ecuador', 'germany']],
+  ['G57', 'F', '2026-06-25T23:00:00Z', 'AT&T Stadium', ['japan', 'sweden']],
+  ['G58', 'F', '2026-06-25T23:00:00Z', 'GEHA Field at Arrowhead Stadium', ['tunisia', 'netherlands']],
+  ['G59', 'D', '2026-06-26T02:00:00Z', "Levi's Stadium", ['paraguay', 'australia']],
+  ['G60', 'D', '2026-06-26T02:00:00Z', 'SoFi Stadium', ['turkiye', 'united-states']],
+  ['G61', 'I', '2026-06-26T19:00:00Z', 'Gillette Stadium', ['norway', 'france']],
+  ['G62', 'I', '2026-06-26T19:00:00Z', 'BMO Field', ['senegal', 'iraq']],
+  ['G63', 'H', '2026-06-27T00:00:00Z', 'NRG Stadium', ['cabo-verde', 'saudi-arabia']],
+  ['G64', 'H', '2026-06-27T00:00:00Z', 'Estadio Akron', ['uruguay', 'spain']],
+  ['G65', 'G', '2026-06-27T03:00:00Z', 'Lumen Field', ['egypt', 'iran']],
+  ['G66', 'G', '2026-06-27T03:00:00Z', 'BC Place', ['new-zealand', 'belgium']],
+  ['G67', 'L', '2026-06-27T21:00:00Z', 'Lincoln Financial Field', ['croatia', 'ghana']],
+  ['G68', 'L', '2026-06-27T21:00:00Z', 'MetLife Stadium', ['panama', 'england']],
+  ['G69', 'K', '2026-06-27T23:30:00Z', 'Hard Rock Stadium', ['colombia', 'portugal']],
+  ['G70', 'K', '2026-06-27T23:30:00Z', 'Mercedes-Benz Stadium', ['congo-dr', 'uzbekistan']],
+  ['G71', 'J', '2026-06-28T02:00:00Z', 'GEHA Field at Arrowhead Stadium', ['algeria', 'austria']],
+  ['G72', 'J', '2026-06-28T02:00:00Z', 'AT&T Stadium', ['jordan', 'argentina']],
+] satisfies readonly GroupStageFixtureDefinition[]
 
-const GROUP_STAGE_TIMES = ['12:00 PM ET', '3:00 PM ET', '6:00 PM ET', '9:00 PM ET'] as const
-const GROUP_STAGE_VENUES = [
-  'Mexico City',
-  'Toronto',
-  'Los Angeles',
-  'Miami',
-  'Boston',
-  'Dallas',
-  'Seattle',
-  'Vancouver',
-  'Houston',
-  'Atlanta',
-  'Kansas City',
-  'New York/New Jersey',
-] as const
+const THIRD_PLACE_FIXTURE = {
+  id: 'M103',
+  isoUtc: '2026-07-18T21:00:00Z',
+  venue: 'Hard Rock Stadium',
+} as const
+
+const EASTERN_DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'America/New_York',
+})
+
+const EASTERN_TIME_FORMAT = new Intl.DateTimeFormat('en-US', {
+  hour: 'numeric',
+  hour12: true,
+  minute: '2-digit',
+  timeZone: 'America/New_York',
+})
 
 const newId = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -1497,11 +1567,6 @@ function scheduleTeam(teamId: TeamId | null, fallbackLabel: string): ScheduleTea
   }
 }
 
-function getGroupFixtureDate(fixtureIndex: number) {
-  const day = 11 + Math.floor(fixtureIndex / GROUP_STAGE_TIMES.length)
-  return `Jun ${day}`
-}
-
 function getScheduleTimestamp(date: string, time: string) {
   const [, monthText, dayText] = /^(Jun|Jul) (\d{1,2})$/.exec(date) ?? []
   const [, hourText, minuteText, meridiem] = /^(\d{1,2}):(\d{2}) (AM|PM) ET$/.exec(time) ?? []
@@ -1517,6 +1582,14 @@ function getScheduleTimestamp(date: string, time: string) {
   return Date.UTC(2026, month, day, hour, Number(minuteText))
 }
 
+function formatEasternDate(isoUtc: string) {
+  return EASTERN_DATE_FORMAT.format(new Date(isoUtc))
+}
+
+function formatEasternTime(isoUtc: string) {
+  return `${EASTERN_TIME_FORMAT.format(new Date(isoUtc)).replace(/\u202f/g, ' ')} ET`
+}
+
 function getMockScore(fixtureId: string, teams: [ScheduleTeam, ScheduleTeam], winnerId: TeamId | null) {
   if (!winnerId || !teams[0].teamId || !teams[1].teamId) return undefined
 
@@ -1530,43 +1603,30 @@ function getMockScore(fixtureId: string, teams: [ScheduleTeam, ScheduleTeam], wi
 }
 
 function buildGroupSchedule(actualResults: ActualResults): ScheduleFixture[] {
-  const openingFixtureById = new Map(OPENING_FIXTURES.map((fixture) => [fixture.id, fixture]))
-
-  return GROUP_IDS.flatMap((group, groupIndex) => {
+  return GROUP_STAGE_FIXTURES.map(([id, group, isoUtc, venue, [leftTeamId, rightTeamId]]) => {
     const actualOrder = actualResults.groupOrder[group] ?? []
     const groupComplete = actualOrder.length >= 4
+    const teams = [scheduleTeam(leftTeamId, `Group ${group}`), scheduleTeam(rightTeamId, `Group ${group}`)] as [ScheduleTeam, ScheduleTeam]
+    const leftActualIndex = actualOrder.indexOf(leftTeamId)
+    const rightActualIndex = actualOrder.indexOf(rightTeamId)
+    const winnerId = groupComplete && leftActualIndex !== -1 && rightActualIndex !== -1
+      ? leftActualIndex < rightActualIndex
+        ? leftTeamId
+        : rightTeamId
+      : null
 
-    return GROUP_FIXTURE_PAIRINGS.map(([leftIndex, rightIndex], pairingIndex) => {
-      const globalIndex = groupIndex * GROUP_FIXTURE_PAIRINGS.length + pairingIndex
-      const id = `G-${group}${pairingIndex + 1}`
-      const override = openingFixtureById.get(id)
-      const leftTeamId = override?.teams[0] ?? teamsByGroup[group][leftIndex].id
-      const rightTeamId = override?.teams[1] ?? teamsByGroup[group][rightIndex].id
-      const teams = [scheduleTeam(leftTeamId, `Group ${group}`), scheduleTeam(rightTeamId, `Group ${group}`)] as [ScheduleTeam, ScheduleTeam]
-      const leftActualIndex = actualOrder.indexOf(leftTeamId)
-      const rightActualIndex = actualOrder.indexOf(rightTeamId)
-      const winnerId = groupComplete
-        ? leftActualIndex <= rightActualIndex
-          ? leftTeamId
-          : rightTeamId
-        : null
-
-      return {
-        id,
-        date: override?.date ?? getGroupFixtureDate(globalIndex),
-        time: override?.time ?? GROUP_STAGE_TIMES[globalIndex % GROUP_STAGE_TIMES.length],
-        startsAt: getScheduleTimestamp(
-          override?.date ?? getGroupFixtureDate(globalIndex),
-          override?.time ?? GROUP_STAGE_TIMES[globalIndex % GROUP_STAGE_TIMES.length],
-        ),
-        venue: override?.venue ?? GROUP_STAGE_VENUES[globalIndex % GROUP_STAGE_VENUES.length],
-        teams,
-        label: `Group ${group}`,
-        status: groupComplete ? 'completed' : 'upcoming',
-        score: getMockScore(id, teams, winnerId),
-        winnerId,
-      }
-    })
+    return {
+      id,
+      date: formatEasternDate(isoUtc),
+      time: formatEasternTime(isoUtc),
+      startsAt: Date.parse(isoUtc),
+      venue,
+      teams,
+      label: `Group ${group}`,
+      status: groupComplete ? 'completed' : 'upcoming',
+      score: getMockScore(id, teams, winnerId),
+      winnerId,
+    }
   })
 }
 
@@ -1593,8 +1653,22 @@ function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
       winnerId,
     } satisfies ScheduleFixture
   })
+  const thirdPlaceSchedule = {
+    id: THIRD_PLACE_FIXTURE.id,
+    date: formatEasternDate(THIRD_PLACE_FIXTURE.isoUtc),
+    time: formatEasternTime(THIRD_PLACE_FIXTURE.isoUtc),
+    startsAt: Date.parse(THIRD_PLACE_FIXTURE.isoUtc),
+    venue: THIRD_PLACE_FIXTURE.venue,
+    teams: [
+      scheduleTeam(null, 'Semifinal 1 loser'),
+      scheduleTeam(null, 'Semifinal 2 loser'),
+    ] as [ScheduleTeam, ScheduleTeam],
+    label: 'Third-place',
+    status: 'upcoming',
+    winnerId: null,
+  } satisfies ScheduleFixture
 
-  return [...groupSchedule, ...bracketSchedule].sort((left, right) => {
+  return [...groupSchedule, ...bracketSchedule, thirdPlaceSchedule].sort((left, right) => {
     const timeDelta = left.startsAt - right.startsAt
     if (timeDelta !== 0) return timeDelta
     return left.id.localeCompare(right.id)
