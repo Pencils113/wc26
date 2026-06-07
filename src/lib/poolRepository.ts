@@ -1,5 +1,5 @@
 import { emptyActualResults } from '../data/results'
-import type { ActualResults, BracketPicks, BracketSubmission, Room } from '../types'
+import type { ActualResults, BracketPicks, BracketSubmission, MatchResult, Room } from '../types'
 import { hasSupabaseConfig, requireSupabase, supabase } from './supabaseClient'
 
 interface BracketSubmissionRow {
@@ -17,6 +17,23 @@ interface ActualResultsRow {
   third_place_advancers: string[]
   knockout_winners: ActualResults['knockoutWinners']
   source: string
+  updated_at: string
+}
+
+interface MatchResultRow {
+  id: string
+  stage: string
+  home_team_id: string | null
+  away_team_id: string | null
+  home_score: number | null
+  away_score: number | null
+  winner_team_id: string | null
+  starts_at: string | null
+  status: string
+  raw: {
+    statusDetail?: string
+    displayClock?: string
+  } | null
   updated_at: string
 }
 
@@ -57,6 +74,18 @@ export const fetchRemoteActualResults = async (): Promise<ActualResults> => {
   return mapActualResultsRow(data as ActualResultsRow)
 }
 
+export const fetchRemoteMatches = async (): Promise<MatchResult[]> => {
+  const client = requireSupabase()
+  const { data, error } = await client
+    .from('matches')
+    .select('id, stage, home_team_id, away_team_id, home_score, away_score, winner_team_id, starts_at, status, raw, updated_at')
+    .order('starts_at', { ascending: true })
+
+  if (error) throw error
+
+  return ((data ?? []) as MatchResultRow[]).map(mapMatchResultRow)
+}
+
 export const submitRemoteBracket = async ({
   picks,
   room,
@@ -83,6 +112,7 @@ export const subscribeToRemotePoolUpdates = (onUpdate: () => void) => {
     .channel('world-cup-pool-updates')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'brackets' }, onUpdate)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'actual_results' }, onUpdate)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, onUpdate)
     .subscribe()
 
   return () => {
@@ -108,5 +138,20 @@ const mapActualResultsRow = (row: ActualResultsRow): ActualResults => ({
   thirdPlaceAdvancers: row.third_place_advancers as ActualResults['thirdPlaceAdvancers'],
   knockoutWinners: row.knockout_winners ?? {},
   source: row.source,
+  updatedAt: row.updated_at,
+})
+
+const mapMatchResultRow = (row: MatchResultRow): MatchResult => ({
+  id: row.id,
+  stage: row.stage,
+  homeTeamId: row.home_team_id ?? undefined,
+  awayTeamId: row.away_team_id ?? undefined,
+  homeScore: row.home_score,
+  awayScore: row.away_score,
+  winnerTeamId: row.winner_team_id ?? undefined,
+  startsAt: row.starts_at ?? undefined,
+  status: row.status,
+  statusDetail: row.raw?.statusDetail,
+  displayClock: row.raw?.displayClock,
   updatedAt: row.updated_at,
 })

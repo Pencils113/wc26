@@ -117,6 +117,21 @@ export interface ActualResults {
   knockoutWinners: Record<MatchId, TeamId>
 }
 
+export interface MatchResult {
+  id: MatchId
+  stage: string
+  homeTeamId?: TeamId
+  awayTeamId?: TeamId
+  homeScore: number | null
+  awayScore: number | null
+  winnerTeamId?: TeamId
+  startsAt?: string
+  status: string
+  statusDetail?: string
+  displayClock?: string
+  updatedAt: string
+}
+
 export interface ScoreBreakdown {
   groupAdvancement: number
   groupPlacement: number

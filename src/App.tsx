@@ -36,6 +36,7 @@ import { getActualTeamMapStages, getPredictionTeamMapStages } from './lib/mapPro
 import { KNOCKOUT_ROUND_ORDER, knockoutLayout } from './lib/knockoutLayout'
 import {
   fetchRemoteActualResults,
+  fetchRemoteMatches,
   fetchRemoteSubmissions,
   submitRemoteBracket,
   subscribeToRemotePoolUpdates,
@@ -49,7 +50,7 @@ import {
   upsertLocalSubmission,
 } from './lib/storage'
 import { hasSupabaseConfig } from './lib/supabaseClient'
-import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type Room, type TeamId } from './types'
+import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type MatchResult, type Room, type TeamId } from './types'
 
 type AppStep = 'gate' | 'name' | 'rulesIntro' | 'build' | 'leaderboard'
 type ResultsMode = 'pre' | 'demo'
@@ -73,7 +74,9 @@ interface ScheduleFixture {
   venue: string
   teams: [ScheduleTeam, ScheduleTeam]
   label: string
-  status: 'completed' | 'upcoming'
+  status: 'completed' | 'live' | 'upcoming'
+  statusDetail?: string
+  displayClock?: string
   score?: [number, number]
   winnerId?: TeamId | null
 }
@@ -88,36 +91,36 @@ const GROUP_ADVANCER_POINTS = 2
 const GROUP_PLACEMENT_POINTS = [3, 2, 1, 0] as const
 
 const KNOCKOUT_TIMES: Record<string, string> = {
-  M73: '8:00 PM ET',
-  M74: '6:00 PM ET',
-  M75: '9:00 PM ET',
-  M76: '8:00 PM ET',
-  M77: '7:00 PM ET',
-  M78: '9:00 PM ET',
-  M79: '8:00 PM ET',
-  M80: '8:00 PM ET',
-  M81: '7:00 PM ET',
-  M82: '10:00 PM ET',
-  M83: '8:00 PM ET',
-  M84: '10:00 PM ET',
-  M85: '9:00 PM ET',
-  M86: '8:00 PM ET',
-  M87: '7:00 PM ET',
-  M88: '10:00 PM ET',
-  M89: '8:00 PM ET',
-  M90: '6:00 PM ET',
-  M91: '5:00 PM ET',
-  M92: '9:00 PM ET',
-  M93: '8:00 PM ET',
-  M94: '9:00 PM ET',
-  M95: '7:00 PM ET',
-  M96: '10:00 PM ET',
-  M97: '8:00 PM ET',
-  M98: '8:00 PM ET',
-  M99: '6:00 PM ET',
+  M73: '3:00 PM ET',
+  M74: '1:00 PM ET',
+  M75: '4:30 PM ET',
+  M76: '9:00 PM ET',
+  M77: '1:00 PM ET',
+  M78: '5:00 PM ET',
+  M79: '9:00 PM ET',
+  M80: '12:00 PM ET',
+  M81: '4:00 PM ET',
+  M82: '8:00 PM ET',
+  M83: '3:00 PM ET',
+  M84: '7:00 PM ET',
+  M85: '11:00 PM ET',
+  M86: '2:00 PM ET',
+  M87: '6:00 PM ET',
+  M88: '9:30 PM ET',
+  M89: '1:00 PM ET',
+  M90: '5:00 PM ET',
+  M91: '4:00 PM ET',
+  M92: '8:00 PM ET',
+  M93: '3:00 PM ET',
+  M94: '8:00 PM ET',
+  M95: '12:00 PM ET',
+  M96: '4:00 PM ET',
+  M97: '4:00 PM ET',
+  M98: '3:00 PM ET',
+  M99: '5:00 PM ET',
   M100: '9:00 PM ET',
-  M101: '8:00 PM ET',
-  M102: '8:00 PM ET',
+  M101: '3:00 PM ET',
+  M102: '3:00 PM ET',
   M104: '3:00 PM ET',
 }
 
@@ -263,6 +266,7 @@ function App() {
   const [localSubmissions, setLocalSubmissions] = useState<BracketSubmission[]>(() => loadLocalSubmissions())
   const [remoteSubmissions, setRemoteSubmissions] = useState<BracketSubmission[]>([])
   const [remoteActualResults, setRemoteActualResults] = useState<ActualResults | null>(null)
+  const [remoteMatches, setRemoteMatches] = useState<MatchResult[]>([])
   const [resultsMode, setResultsMode] = useState<ResultsMode>('pre')
   const [leaderboardOnly, setLeaderboardOnly] = useState(false)
   const [dataError, setDataError] = useState('')
@@ -317,14 +321,16 @@ function App() {
 
     const refreshRemoteData = async () => {
       try {
-        const [nextSubmissions, nextResults] = await Promise.all([
+        const [nextSubmissions, nextResults, nextMatches] = await Promise.all([
           fetchRemoteSubmissions(selectedRoomSlug),
           fetchRemoteActualResults(),
+          fetchRemoteMatches(),
         ])
 
         if (cancelled) return
         setRemoteSubmissions(nextSubmissions)
         setRemoteActualResults(nextResults)
+        setRemoteMatches(nextMatches)
         setDataError('')
       } catch (error) {
         if (!cancelled) setDataError(errorMessage(error))
@@ -335,9 +341,13 @@ function App() {
     const unsubscribe = subscribeToRemotePoolUpdates(() => {
       void refreshRemoteData()
     })
+    const intervalId = window.setInterval(() => {
+      void refreshRemoteData()
+    }, 60_000)
 
     return () => {
       cancelled = true
+      window.clearInterval(intervalId)
       unsubscribe()
     }
   }, [selectedRoomSlug])
@@ -530,6 +540,7 @@ function App() {
         <LeaderboardPanel
           actualResults={actualResults}
           entries={leaderboard}
+          matchResults={remoteMatches}
           previewSubmission={previewSubmission}
           resultsMode={resultsMode}
           room={activeRoom}
@@ -1602,6 +1613,41 @@ function getMockScore(fixtureId: string, teams: [ScheduleTeam, ScheduleTeam], wi
     : [losingGoals, winningGoals] as [number, number]
 }
 
+function getTimelineStatus(status: string): ScheduleFixture['status'] {
+  const normalized = status.toLowerCase()
+  if (['final', 'ft', 'aet', 'pen', 'post', 'completed'].includes(normalized)) return 'completed'
+  if (['live', 'in', 'in_progress', '1h', '2h', 'ht', 'et', 'p'].includes(normalized)) return 'live'
+  return 'upcoming'
+}
+
+function applyMatchResult(fixture: ScheduleFixture, matchResult?: MatchResult): ScheduleFixture {
+  if (!matchResult) return fixture
+
+  const status = getTimelineStatus(matchResult.status)
+  const hasScore = typeof matchResult.homeScore === 'number' && typeof matchResult.awayScore === 'number'
+  const hasKnownTeams = Boolean(
+    matchResult.homeTeamId &&
+      matchResult.awayTeamId &&
+      teamsById[matchResult.homeTeamId] &&
+      teamsById[matchResult.awayTeamId],
+  )
+
+  return {
+    ...fixture,
+    teams: hasKnownTeams
+      ? [
+          scheduleTeam(matchResult.homeTeamId ?? null, fixture.teams[0].label),
+          scheduleTeam(matchResult.awayTeamId ?? null, fixture.teams[1].label),
+        ]
+      : fixture.teams,
+    score: hasScore ? [matchResult.homeScore ?? 0, matchResult.awayScore ?? 0] : fixture.score,
+    status,
+    statusDetail: matchResult.statusDetail,
+    displayClock: matchResult.displayClock,
+    winnerId: matchResult.winnerTeamId ?? fixture.winnerId,
+  }
+}
+
 function buildGroupSchedule(actualResults: ActualResults): ScheduleFixture[] {
   return GROUP_STAGE_FIXTURES.map(([id, group, isoUtc, venue, [leftTeamId, rightTeamId]]) => {
     const actualOrder = actualResults.groupOrder[group] ?? []
@@ -1630,9 +1676,12 @@ function buildGroupSchedule(actualResults: ActualResults): ScheduleFixture[] {
   })
 }
 
-function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
+function buildLiveSchedule(actualResults: ActualResults, matchResults: MatchResult[] = []): ScheduleFixture[] {
+  const matchResultsById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
   const actualPicks = buildActualPicks(actualResults)
-  const groupSchedule = buildGroupSchedule(actualResults)
+  const groupSchedule = buildGroupSchedule(actualResults).map((fixture) =>
+    applyMatchResult(fixture, matchResultsById.get(fixture.id)),
+  )
   const bracketSchedule = buildResolvedBracket(actualPicks).map((match) => {
     const teams = [
       scheduleTeam(match.teams[0], match.slots[0].label),
@@ -1640,7 +1689,7 @@ function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
     ] as [ScheduleTeam, ScheduleTeam]
     const winnerId = actualResults.knockoutWinners[match.id] ?? null
 
-    return {
+    return applyMatchResult({
       id: match.id,
       date: match.date,
       time: KNOCKOUT_TIMES[match.id] ?? 'TBD',
@@ -1651,9 +1700,9 @@ function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
       status: winnerId ? 'completed' : 'upcoming',
       score: getMockScore(match.id, teams, winnerId),
       winnerId,
-    } satisfies ScheduleFixture
+    } satisfies ScheduleFixture, matchResultsById.get(match.id))
   })
-  const thirdPlaceSchedule = {
+  const thirdPlaceSchedule = applyMatchResult({
     id: THIRD_PLACE_FIXTURE.id,
     date: formatEasternDate(THIRD_PLACE_FIXTURE.isoUtc),
     time: formatEasternTime(THIRD_PLACE_FIXTURE.isoUtc),
@@ -1666,7 +1715,7 @@ function buildLiveSchedule(actualResults: ActualResults): ScheduleFixture[] {
     label: 'Third-place',
     status: 'upcoming',
     winnerId: null,
-  } satisfies ScheduleFixture
+  } satisfies ScheduleFixture, matchResultsById.get(THIRD_PLACE_FIXTURE.id))
 
   return [...groupSchedule, ...bracketSchedule, thirdPlaceSchedule].sort((left, right) => {
     const timeDelta = left.startsAt - right.startsAt
@@ -1714,17 +1763,20 @@ function OfficialResultsPanel({ actualResults }: { actualResults: ActualResults 
   )
 }
 
-function LiveSchedulePanel({ actualResults }: { actualResults: ActualResults }) {
-  const fixtures = useMemo(() => buildLiveSchedule(actualResults), [actualResults])
+function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: ActualResults; matchResults: MatchResult[] }) {
+  const fixtures = useMemo(() => buildLiveSchedule(actualResults, matchResults), [actualResults, matchResults])
   const listRef = useRef<HTMLDivElement | null>(null)
   const completedCount = fixtures.filter((fixture) => fixture.status === 'completed').length
+  const liveCount = fixtures.filter((fixture) => fixture.status === 'live').length
+  const upcomingCount = fixtures.filter((fixture) => fixture.status === 'upcoming').length
 
   useEffect(() => {
     const list = listRef.current
     if (!list) return
 
+    const firstLive = list.querySelector<HTMLElement>('.schedule-row.live')
     const firstUpcoming = list.querySelector<HTMLElement>('.schedule-row.upcoming')
-    const target = firstUpcoming ?? list.lastElementChild
+    const target = firstLive ?? firstUpcoming ?? list.lastElementChild
     if (!(target instanceof HTMLElement)) return
 
     list.scrollTop = Math.max(0, target.offsetTop - list.offsetTop - 8)
@@ -1743,20 +1795,36 @@ function LiveSchedulePanel({ actualResults }: { actualResults: ActualResults }) 
         {fixtures.map((fixture, index) => {
           const previousStatus = fixtures[index - 1]?.status
           const showStatusDivider = index === 0 || previousStatus !== fixture.status
-          const statusLabel = fixture.status === 'completed' ? 'Completed' : 'Upcoming'
+          const statusLabel = fixture.status === 'completed'
+            ? 'Completed'
+            : fixture.status === 'live'
+              ? 'Live'
+              : 'Upcoming'
+          const statusCountLabel = fixture.status === 'completed'
+            ? `${completedCount} final`
+            : fixture.status === 'live'
+              ? `${liveCount} live`
+              : `${upcomingCount} to play`
+          const timeLabel = fixture.status === 'completed'
+            ? 'FT'
+            : fixture.status === 'live'
+              ? fixture.displayClock && fixture.displayClock !== "0'"
+                ? fixture.displayClock
+                : fixture.statusDetail ?? 'LIVE'
+              : fixture.time
 
           return (
             <Fragment key={fixture.id}>
               {showStatusDivider && (
                 <div className={`schedule-section-label ${fixture.status}`}>
                   <span>{statusLabel}</span>
-                  <b>{fixture.status === 'completed' ? `${completedCount} final` : `${fixtures.length - completedCount} to play`}</b>
+                  <b>{statusCountLabel}</b>
                 </div>
               )}
               <article className={`schedule-row ${fixture.status}`}>
                 <div className="schedule-meta">
                   <span>{fixture.date}</span>
-                  <span className="schedule-time">{fixture.status === 'completed' ? 'FT' : fixture.time}</span>
+                  <span className="schedule-time">{timeLabel}</span>
                 </div>
                 <div className="schedule-teams">
                   <ScheduleTeamIdentity team={fixture.teams[0]} winner={fixture.status === 'completed' && fixture.teams[0].teamId === fixture.winnerId} />
@@ -1791,6 +1859,7 @@ function ScheduleTeamIdentity({ team, winner = false }: { team: ScheduleTeam; wi
 function LeaderboardPanel({
   actualResults,
   entries,
+  matchResults,
   room,
   previewSubmission,
   resultsMode,
@@ -1798,6 +1867,7 @@ function LeaderboardPanel({
 }: {
   actualResults: ActualResults
   entries: ReturnType<typeof buildLeaderboard>
+  matchResults: MatchResult[]
   room: Room
   previewSubmission: BracketSubmission | null
   resultsMode: ResultsMode
@@ -1885,7 +1955,7 @@ function LeaderboardPanel({
           </div>
         </aside>
       ) : (
-        <LiveSchedulePanel actualResults={actualResults} />
+        <LiveSchedulePanel actualResults={actualResults} matchResults={matchResults} />
       )}
     </div>
   )

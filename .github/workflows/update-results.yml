@@ -3,7 +3,7 @@ name: Update World Cup Results
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/5 * * * *'
 
 jobs:
   update-results:
@@ -19,5 +19,3 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
-          API_FOOTBALL_WORLD_CUP_LEAGUE_ID: ${{ secrets.API_FOOTBALL_WORLD_CUP_LEAGUE_ID }}
