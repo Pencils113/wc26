@@ -1,0 +1,43 @@
+:root {
+  --text: #f4f4ef;
+  --muted: #8b918d;
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.28);
+  --accent: #5adc91;
+  --accent-2: #d6a84f;
+  --danger: #ff6b6b;
+  --body: 'Archivo', 'Avenir Next', Verdana, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--body);
+  color: var(--text);
+  background: #030303;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+[role='button']:focus-visible {
+  outline: 3px solid rgba(90, 220, 145, 0.28);
+  outline-offset: 2px;
+}
+
+img {
+  display: block;
+}
