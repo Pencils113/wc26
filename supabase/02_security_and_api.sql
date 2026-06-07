@@ -143,7 +143,7 @@ begin
     raise exception 'Bracket is locked';
   end if;
 
-  if target_room.password_hash is null or crypt(room_password, target_room.password_hash) <> target_room.password_hash then
+  if lower(trim(coalesce(room_password, ''))) <> target_room.slug then
     raise exception 'Bad room password';
   end if;
 
