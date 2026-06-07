@@ -693,10 +693,6 @@ function BuildScreen({
             </>
           )}
         </section>
-        <section className="panel data-panel">
-          <span>Database</span>
-          <strong>{hasSupabaseConfig ? 'Supabase' : 'Local mock'}</strong>
-        </section>
       </aside>
 
       <div className="build-main">

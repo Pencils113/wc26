@@ -1,3 +1,5 @@
+set search_path = public, extensions;
+
 insert into public.actual_results (id)
 values (1)
 on conflict (id) do nothing;

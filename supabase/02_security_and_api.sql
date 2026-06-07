@@ -58,7 +58,7 @@ create or replace function public.submit_conway_bracket(room_slug text, picks js
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   target_room public.rooms;
@@ -122,7 +122,7 @@ create or replace function public.submit_password_room_bracket(
 returns uuid
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   target_room public.rooms;

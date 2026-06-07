@@ -1,3 +1,5 @@
+set search_path = public, extensions;
+
 insert into public.rooms (slug, name, description, auth_mode, password_hash, lock_at)
 values (
   'conway',

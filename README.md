@@ -53,6 +53,7 @@ Supabase artifacts live in `supabase/`. For the Supabase SQL editor, run these f
 5. `supabase/02d_grants.sql`
 6. `supabase/03_seed_and_realtime.sql`
 7. `supabase/04_open_conway_room.sql`
+8. `supabase/05_fix_password_crypto_search_path.sql`
 
 `supabase/schema.sql` and `supabase/02_security_and_api.sql` contain combined setup for CLI-style workflows, but the split-file path is safer in the Supabase SQL editor.
 
@@ -67,7 +68,7 @@ The schema creates:
 - RPC for `submit_password_room_bracket`, plus the legacy unused `submit_conway_bracket`
 - Realtime publication entries for brackets/results
 
-If you already applied the schema before Conway became an open room, just run `supabase/04_open_conway_room.sql` in the Supabase SQL editor.
+If you already applied the schema before Conway became an open room, run `supabase/04_open_conway_room.sql` and then `supabase/05_fix_password_crypto_search_path.sql` in the Supabase SQL editor.
 
 After applying the schema:
 
