@@ -1,0 +1,45 @@
+name: Upsert Room And Port Submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_room_slug:
+        description: Room slug and passcode, for example sixseven
+        required: true
+      target_room_name:
+        description: Display name for the room
+        required: true
+      target_room_description:
+        description: Room description
+        required: true
+      source_room_slug:
+        description: Existing room to copy from
+        required: true
+      source_display_name:
+        description: Exact submitted display name to copy
+        required: true
+      confirm:
+        description: Type upsert-room-and-port-submission
+        required: true
+
+jobs:
+  upsert-room-and-port-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/upsert-room-and-port-submission.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM_UPSERT_ROOM: ${{ inputs.confirm }}
+          TARGET_ROOM_SLUG: ${{ inputs.target_room_slug }}
+          TARGET_ROOM_NAME: ${{ inputs.target_room_name }}
+          TARGET_ROOM_DESCRIPTION: ${{ inputs.target_room_description }}
+          TARGET_ROOM_LOCK_AT: '2026-06-11T18:00:00Z'
+          SOURCE_ROOM_SLUG: ${{ inputs.source_room_slug }}
+          SOURCE_DISPLAY_NAME: ${{ inputs.source_display_name }}
