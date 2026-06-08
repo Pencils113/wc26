@@ -1944,21 +1944,6 @@
   background: #080808;
 }
 
-.winner-cloud {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.winner-cloud span {
-  padding: 5px 7px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 10px;
-}
-
 .empty-results {
   min-height: 82px;
   display: grid;

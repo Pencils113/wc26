@@ -21,7 +21,6 @@ import {
   createInitialPicks,
   getChampion,
   getFlagUrl,
-  getGroupWinners,
   getTeamSeedLabel,
   isBracketComplete,
   isGroupStageComplete,
@@ -2046,7 +2045,6 @@ function BracketSummary({
 }) {
   const champion = getChampion(submission)
   const score = scoreSubmission(submission, actualResults)
-  const groupWinners = getGroupWinners(submission)
 
   return (
     <section className="panel bracket-summary">
@@ -2067,11 +2065,6 @@ function BracketSummary({
         <ProgressRow complete={score.groupAdvancement > 0} label="Advancement" value={String(score.groupAdvancement)} />
         <ProgressRow complete={score.groupPlacement > 0} label="Placement" value={String(score.groupPlacement)} />
         <ProgressRow complete={score.knockout > 0} label="Knockout" value={String(score.knockout)} />
-      </div>
-      <div className="winner-cloud">
-        {groupWinners.map((teamId) => (
-          <span key={teamId}>{teamsById[teamId].code}</span>
-        ))}
       </div>
     </section>
   )

@@ -252,7 +252,4 @@ export const getTeamSeedLabel = (teamId: TeamId) => {
   return `Group ${team.group} - FIFA ${team.fifaRank}`
 }
 
-export const getGroupWinners = (picks: BracketPicks) =>
-  GROUP_IDS.map((group) => picks.groupOrder[group][0]).filter((teamId): teamId is TeamId => Boolean(teamId))
-
 export const getAllTeamIds = () => teams.map((team) => team.id)
