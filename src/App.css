@@ -188,6 +188,10 @@
   opacity: 0.42;
 }
 
+.mobile-submit-panel {
+  display: none;
+}
+
 .app-header {
   position: sticky;
   top: 0;
@@ -456,6 +460,11 @@
   font-family: var(--mono);
 }
 
+.group-card.touch-dragging .rank-slot {
+  border-color: rgba(229, 229, 220, 0.3);
+  background: #090909;
+}
+
 .team-pool {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -535,6 +544,7 @@
   padding: 5px 4px;
   cursor: grab;
   text-align: center;
+  touch-action: none;
 }
 
 .team-token:active {
@@ -544,6 +554,13 @@
 .team-token.selected {
   border-color: rgba(90, 220, 145, 0.65);
   box-shadow: inset 0 0 0 1px rgba(90, 220, 145, 0.22);
+}
+
+.team-token.dragging {
+  border-color: rgba(229, 229, 220, 0.65);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+  opacity: 0.82;
+  transform: scale(0.98);
 }
 
 .team-token.readonly {
@@ -2036,6 +2053,14 @@
   .build-rail,
   .detail-rail {
     position: static;
+  }
+
+  .desktop-submit-panel {
+    display: none;
+  }
+
+  .mobile-submit-panel {
+    display: block;
   }
 
   .groups-grid,

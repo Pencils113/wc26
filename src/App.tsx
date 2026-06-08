@@ -4,14 +4,13 @@ import {
   GripVertical,
   Info,
   Lock,
-  PencilLine,
   Save,
   Table2,
   Trophy,
   User,
   X,
 } from 'lucide-react'
-import { Fragment, useEffect, useMemo, useRef, useState, type Dispatch, type DragEvent, type SetStateAction } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type Dispatch, type DragEvent, type PointerEvent, type SetStateAction } from 'react'
 import './App.css'
 import { WorldCupMap } from './components/WorldCupMap'
 import { emptyActualResults } from './data/results'
@@ -739,6 +738,8 @@ function AppHeader({
   leaderboardOnly: boolean
   showBoard: boolean
 }) {
+  const showNav = leaderboardOnly || showBoard
+
   return (
     <header className="app-header">
       <button className="wordmark" onClick={onReset} type="button">
@@ -752,23 +753,23 @@ function AppHeader({
           Jun 11
         </span>
       </div>
-      <nav className="dark-tabs" aria-label="Primary">
-        {leaderboardOnly ? (
-          <button
-            className={step === 'leaderboard' ? 'active' : ''}
-            onClick={() => onNavigate('leaderboard')}
-            type="button"
-          >
-            <Table2 size={16} />
-            Leaderboard
-          </button>
-        ) : (
-          <>
-            <button className={step === 'build' ? 'active' : ''} onClick={() => onNavigate('build')} type="button">
-              {showBoard ? <FileCheck2 size={16} /> : <PencilLine size={16} />}
-              {showBoard ? 'My Submission' : 'Build'}
+      {showNav && (
+        <nav className="dark-tabs" aria-label="Primary">
+          {leaderboardOnly ? (
+            <button
+              className={step === 'leaderboard' ? 'active' : ''}
+              onClick={() => onNavigate('leaderboard')}
+              type="button"
+            >
+              <Table2 size={16} />
+              Leaderboard
             </button>
-            {showBoard && (
+          ) : (
+            <>
+              <button className={step === 'build' ? 'active' : ''} onClick={() => onNavigate('build')} type="button">
+                <FileCheck2 size={16} />
+                My Submission
+              </button>
               <button
                 className={step === 'leaderboard' ? 'active' : ''}
                 onClick={() => onNavigate('leaderboard')}
@@ -777,10 +778,10 @@ function AppHeader({
                 <Table2 size={16} />
                 Leaderboard
               </button>
-            )}
-          </>
-        )}
-      </nav>
+            </>
+          )}
+        </nav>
+      )}
     </header>
   )
 }
@@ -835,27 +836,15 @@ function BuildScreen({
             <ProgressRow label="Champion" value={champion ? teamsById[champion].code : '-'} complete={Boolean(champion)} />
           </div>
         </section>
-        <section className="panel">
-          <p className="kicker">{readOnly ? 'Submitted' : 'Submit'}</p>
-          <h2>{champion ? teamsById[champion].name : 'No champion'}</h2>
-          {readOnly ? (
-            <div className="frozen-badge">
-              <Lock size={15} />
-              Frozen
-            </div>
-          ) : (
-            <>
-              <button className="solid-button full" disabled={!bracketReady || submitting} onClick={() => void onSubmit()} type="button">
-                <Save size={16} />
-                {submitting ? 'Submitting...' : 'Submit picks'}
-              </button>
-              <button className="ghost-button full" onClick={onClear} type="button">
-                Clear picks
-              </button>
-              {submitError && <p className="form-error">{submitError}</p>}
-            </>
-          )}
-        </section>
+        <SubmitPanel
+          bracketReady={bracketReady}
+          champion={champion}
+          className="desktop-submit-panel"
+          onClear={onClear}
+          onSubmit={onSubmit}
+          submitError={submitError}
+          submitting={submitting}
+        />
       </aside>
 
       <div className="build-main">
@@ -863,8 +852,50 @@ function BuildScreen({
         <GroupStageBuilder picks={picks} readOnly={readOnly} setPicks={setPicks} />
         <ThirdPlaceSelector groupStageComplete={groupStageComplete} picks={picks} readOnly={readOnly} setPicks={setPicks} />
         <KnockoutBuilder picks={picks} readOnly={readOnly} setPicks={setPicks} />
+        <SubmitPanel
+          bracketReady={bracketReady}
+          champion={champion}
+          className="mobile-submit-panel"
+          onClear={onClear}
+          onSubmit={onSubmit}
+          submitError={submitError}
+          submitting={submitting}
+        />
       </div>
     </div>
+  )
+}
+
+function SubmitPanel({
+  bracketReady,
+  champion,
+  className = '',
+  submitError,
+  submitting,
+  onClear,
+  onSubmit,
+}: {
+  bracketReady: boolean
+  champion: TeamId | null
+  className?: string
+  submitError: string
+  submitting: boolean
+  onClear: () => void
+  onSubmit: () => void | Promise<void>
+}) {
+  return (
+    <section className={`panel submit-panel ${className}`.trim()}>
+      <p className="kicker">Submit</p>
+      <h2>{champion ? teamsById[champion].name : 'No champion'}</h2>
+      <button className="solid-button full" disabled={!bracketReady || submitting} onClick={() => void onSubmit()} type="button">
+        <Save size={16} />
+        {submitting ? 'Submitting...' : 'Submit picks'}
+      </button>
+      <button className="ghost-button full" onClick={onClear} type="button">
+        Clear picks
+      </button>
+      {submitError && <p className="form-error">{submitError}</p>}
+    </section>
   )
 }
 
@@ -1144,7 +1175,7 @@ function GroupStageBuilder({
   return (
     <section className="section-block">
       <SectionHead
-        description="Rank each group 1-4. The top two teams in every group automatically move into the Round of 32."
+        description="Drag or tap teams into slots 1-4. The top two teams in every group automatically move into the Round of 32."
         kicker="01"
         title="Groups"
       />
@@ -1169,18 +1200,47 @@ function GroupCard({
   setPicks: Dispatch<SetStateAction<BracketPicks>>
 }) {
   const [selectedTeamId, setSelectedTeamId] = useState<TeamId | null>(null)
+  const [pointerDragTeamId, setPointerDragTeamId] = useState<TeamId | null>(null)
   const placed = picks.groupOrder[group]
   const availableTeams = teamsByGroup[group].filter((team) => !placed.includes(team.id))
 
   const readDraggedTeam = (event: DragEvent) => event.dataTransfer.getData('text/plain') as TeamId
+  const placeTeam = (teamId: TeamId, index: number) => {
+    setPicks((current) => placeTeamInGroup(current, group, teamId, index))
+    setSelectedTeamId(null)
+  }
   const placeSelectedTeam = (index: number) => {
     if (readOnly || !selectedTeamId) return
-    setPicks((current) => placeTeamInGroup(current, group, selectedTeamId, index))
-    setSelectedTeamId(null)
+    placeTeam(selectedTeamId, index)
+  }
+  const beginPointerDrag = (event: PointerEvent<HTMLDivElement>, teamId: TeamId) => {
+    if (readOnly || event.pointerType === 'mouse') return
+    setPointerDragTeamId(teamId)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const finishPointerDrag = (event: PointerEvent<HTMLDivElement>, fallbackTeamId: TeamId) => {
+    if (readOnly || event.pointerType === 'mouse') return
+
+    const teamId = pointerDragTeamId ?? fallbackTeamId
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    const target = document.elementFromPoint(event.clientX, event.clientY)
+    const slot = target?.closest<HTMLElement>(`[data-group="${group}"][data-rank-index]`)
+    const pool = target?.closest<HTMLElement>(`[data-group-pool="${group}"]`)
+
+    if (slot?.dataset.rankIndex) {
+      placeTeam(teamId, Number(slot.dataset.rankIndex))
+    } else if (pool) {
+      setPicks((current) => removeTeamFromGroup(current, group, teamId))
+    }
+
+    setPointerDragTeamId(null)
   }
 
   return (
-    <article className="group-card">
+    <article className={pointerDragTeamId ? 'group-card touch-dragging' : 'group-card'}>
       <header>
         <span>Group {group}</span>
         <small>{placed.filter(Boolean).length}/4</small>
@@ -1188,6 +1248,7 @@ function GroupCard({
 
       <div
         className="team-pool"
+        data-group-pool={group}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault()
@@ -1198,9 +1259,13 @@ function GroupCard({
       >
         {availableTeams.map((team) => (
           <TeamToken
+            dragging={pointerDragTeamId === team.id}
             group={group}
             key={team.id}
             onSelect={() => setSelectedTeamId(team.id)}
+            onPointerCancel={() => setPointerDragTeamId(null)}
+            onPointerFinish={finishPointerDrag}
+            onPointerStart={beginPointerDrag}
             readOnly={readOnly}
             selected={selectedTeamId === team.id}
             teamId={team.id}
@@ -1215,28 +1280,33 @@ function GroupCard({
           return (
             <li
               className={teamId ? 'rank-slot filled' : 'rank-slot'}
+              data-group={group}
+              data-rank-index={index}
               key={index}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => {
                 event.preventDefault()
                 if (readOnly) return
                 const draggedTeamId = readDraggedTeam(event)
-                setPicks((current) => placeTeamInGroup(current, group, draggedTeamId, index))
-                setSelectedTeamId(null)
+                placeTeam(draggedTeamId, index)
               }}
               onClick={() => placeSelectedTeam(index)}
             >
               <span className="slot-number">{index + 1}</span>
               {teamId ? (
                 <TeamToken
+                  dragging={pointerDragTeamId === teamId}
                   group={group}
                   onSelect={() => setSelectedTeamId(teamId)}
+                  onPointerCancel={() => setPointerDragTeamId(null)}
+                  onPointerFinish={finishPointerDrag}
+                  onPointerStart={beginPointerDrag}
                   readOnly={readOnly}
                   selected={selectedTeamId === teamId}
                   teamId={teamId}
                 />
               ) : (
-                <span className="slot-empty">Drop team</span>
+                <span className="slot-empty">Tap/drop</span>
               )}
             </li>
           )
@@ -1249,12 +1319,20 @@ function GroupCard({
 function TeamToken({
   group,
   onSelect,
+  onPointerCancel,
+  onPointerFinish,
+  onPointerStart,
   readOnly,
   selected,
   teamId,
+  dragging,
 }: {
   group: GroupId
+  dragging: boolean
   onSelect: () => void
+  onPointerCancel: () => void
+  onPointerFinish: (event: PointerEvent<HTMLDivElement>, teamId: TeamId) => void
+  onPointerStart: (event: PointerEvent<HTMLDivElement>, teamId: TeamId) => void
   readOnly: boolean
   selected: boolean
   teamId: TeamId
@@ -1264,7 +1342,7 @@ function TeamToken({
   return (
     <div
       aria-label={team.name}
-      className={`${readOnly ? 'team-token readonly' : 'team-token'}${selected ? ' selected' : ''}`}
+      className={`${readOnly ? 'team-token readonly' : 'team-token'}${selected ? ' selected' : ''}${dragging ? ' dragging' : ''}`}
       draggable={!readOnly}
       onClick={(event) => {
         event.stopPropagation()
@@ -1275,6 +1353,9 @@ function TeamToken({
         event.dataTransfer.setData('text/plain', teamId)
         event.dataTransfer.effectAllowed = 'move'
       }}
+      onPointerCancel={onPointerCancel}
+      onPointerDown={(event) => onPointerStart(event, teamId)}
+      onPointerUp={(event) => onPointerFinish(event, teamId)}
     >
       <GripVertical size={13} />
       <TeamIdentity teamId={teamId} compact />
@@ -1305,6 +1386,7 @@ function InfoHover({ teamId, label }: { teamId: TeamId; label: string }) {
       aria-label={label}
       className="info-hover"
       onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
       role="button"
       tabIndex={0}
     >

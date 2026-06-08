@@ -1,0 +1,32 @@
+name: Delete One Bracket Submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      room_slug:
+        description: Room slug, for example larooch
+        required: true
+      display_name:
+        description: Exact submitted display name
+        required: true
+      confirm:
+        description: Type delete-one-submission
+        required: true
+
+jobs:
+  delete-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/delete-submission.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM_DELETE_SUBMISSION: ${{ inputs.confirm }}
+          DELETE_ROOM_SLUG: ${{ inputs.room_slug }}
+          DELETE_DISPLAY_NAME: ${{ inputs.display_name }}
