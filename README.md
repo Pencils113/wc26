@@ -1,93 +1,23 @@
 # World Cup 26 Pool
 
-A small, static World Cup bracket pool for friends, family, and the Conway room.
+A lightweight World Cup 2026 prediction pool app.
 
-The frontend is a Vite + React + TypeScript app that can be hosted on GitHub Pages. It uses Supabase for submissions, synced match data, results, and leaderboard refresh, with a browser-only local fallback for development when Supabase credentials are absent.
+Users enter a configured room, choose a display name, build a full tournament prediction, submit it once, and track scoring as official match results come in.
 
-## Local Development
+## Scoring
 
-```bash
-npm install
-npm run dev
-```
+Group stage:
+- Correctly predicting that a team qualifies: 2 points
+- Correctly predicting exact group placement:
+  - 1st place: 3 points
+  - 2nd place: 2 points
+  - 3rd place: 1 point
 
-The dev server is configured with relaxed Vite filesystem checks because this local workspace path contains a colon.
+Knockout stage:
+- Round of 32 winner: 4 points
+- Round of 16 winner: 8 points
+- Quarter-final winner: 12 points
+- Semi-final winner: 16 points
+- Champion: 24 points
 
-To test against Supabase locally, copy `.env.example` to `.env.local` and fill:
-
-```bash
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-```
-
-## Checks
-
-```bash
-npm run lint
-npm run build
-```
-
-The npm scripts call package entrypoints directly because this local npm shell was not prepending `node_modules/.bin`.
-
-## Current App Behavior
-
-- Pass code `conway` routes to the Conway name-pick flow.
-- Pass code `larooch` routes to the family name-pick flow.
-- Conway and Larooch both use the passcode/name flow. With Supabase configured, the passcode is checked by the `submit_password_room_bracket` RPC.
-- Room identity is saved to browser `localStorage`.
-- Bracket submissions are saved to Supabase when configured, otherwise to browser `localStorage`.
-- Returning users with a saved submission land on their frozen bracket after entering the pass code.
-- The leaderboard is hidden until the current user has submitted.
-- The leaderboard includes submitted room brackets.
-- Scores are zero before real results are written into Supabase.
-- Team stat cards show on hover/focus of the info button.
-
-## Supabase Setup
-
-Supabase artifacts live in `supabase/`. For the Supabase SQL editor, run these files in order:
-
-1. `supabase/01_tables.sql`
-2. `supabase/02a_security_and_view.sql`
-3. `supabase/02b_conway_rpc.sql`
-4. `supabase/02c_larooch_rpc.sql`
-5. `supabase/02d_grants.sql`
-6. `supabase/03_seed_and_realtime.sql`
-7. `supabase/04_open_conway_room.sql`
-8. `supabase/05_fix_password_crypto_search_path.sql`
-9. `supabase/06_remove_submit_crypto_dependency.sql`
-10. `supabase/07_plain_passcode_rooms.sql`
-
-`supabase/schema.sql` and `supabase/02_security_and_api.sql` contain combined setup for CLI-style workflows, but the split-file path is safer in the Supabase SQL editor.
-
-The schema creates:
-
-- `rooms`
-- `brackets`
-- `matches`
-- `actual_results`
-- `results_sync_runs`
-- `bracket_submissions` read view
-- RPC for `submit_password_room_bracket`, plus the legacy unused `submit_conway_bracket`
-- Realtime publication entries for brackets/results
-
-If you already applied the schema before Conway became an open room, run `supabase/07_plain_passcode_rooms.sql` in the Supabase SQL editor. It makes both rooms plain passcode rooms and removes the `crypt()` dependency from submissions entirely.
-
-After applying the schema:
-
-1. Confirm the configured `conway` and `larooch` rooms have the passcodes you want.
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in GitHub repository secrets.
-
-Required GitHub secrets for deploy/update workflows:
-
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-## Deployment
-
-`.github/workflows/deploy-pages.yml` builds `dist/` and deploys it to GitHub Pages.
-
-`.github/workflows/update-results.yml` is scheduled every 5 minutes and can also be run manually.
-
-The Vite config uses `base: './'`, so the built app works on either a custom domain or a repo-path GitHub Pages URL.
+Scores recalculate as official results are synced.
