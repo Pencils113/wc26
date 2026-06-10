@@ -1,0 +1,36 @@
+name: Rename One Bracket Submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      room_slug:
+        description: Room slug, for example conway
+        required: true
+      current_display_name:
+        description: Exact current submitted display name
+        required: true
+      next_display_name:
+        description: New display name
+        required: true
+      confirm:
+        description: Type rename-one-submission
+        required: true
+
+jobs:
+  rename-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/rename-submission.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM_RENAME_SUBMISSION: ${{ inputs.confirm }}
+          RENAME_ROOM_SLUG: ${{ inputs.room_slug }}
+          RENAME_CURRENT_DISPLAY_NAME: ${{ inputs.current_display_name }}
+          RENAME_NEXT_DISPLAY_NAME: ${{ inputs.next_display_name }}
