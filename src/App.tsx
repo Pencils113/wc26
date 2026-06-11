@@ -1844,29 +1844,69 @@ function RulesInfoHover() {
   )
 }
 
-function OfficialResultsPanel({ actualResults }: { actualResults: ActualResults }) {
+function OfficialResultsPanel({
+  actualResults,
+  matchResults,
+}: {
+  actualResults: ActualResults
+  matchResults: MatchResult[]
+}) {
   const actualPicks = useMemo(() => buildActualPicks(actualResults), [actualResults])
-  const hasResults = hasActualResults(actualResults)
+  const completedMatches = useMemo(
+    () => buildLiveSchedule(actualResults, matchResults).filter((fixture) => fixture.status === 'completed' && fixture.score),
+    [actualResults, matchResults],
+  )
+  const hasStructuredResults = hasActualResults(actualResults)
+  const hasCompletedMatches = completedMatches.length > 0
+  const statusText = hasStructuredResults || hasCompletedMatches
+    ? `Updated ${formatResultDate(actualResults.updatedAt)}`
+    : 'Waiting for Matchday 1'
 
   return (
     <section className="official-results-panel">
       <div className="official-results-head">
         <div>
           <p className="kicker">Official results</p>
-          <strong>{hasResults ? `Updated ${formatResultDate(actualResults.updatedAt)}` : 'Waiting for Matchday 1'}</strong>
+          <strong>{statusText}</strong>
         </div>
         <span>{actualResults.source}</span>
       </div>
 
-      {!hasResults ? (
+      {hasCompletedMatches && <OfficialCompletedMatches fixtures={completedMatches} />}
+
+      {!hasStructuredResults && !hasCompletedMatches ? (
         <div className="official-empty">Correct results will appear here once games are complete.</div>
-      ) : (
+      ) : hasStructuredResults ? (
         <div className="official-review-stack">
           <ReviewGroups actualResults={actualResults} mode="official" picks={actualPicks} />
           <ReviewBracket actualResults={actualResults} mode="official" picks={actualPicks} />
         </div>
-      )}
+      ) : null}
     </section>
+  )
+}
+
+function OfficialCompletedMatches({ fixtures }: { fixtures: ScheduleFixture[] }) {
+  return (
+    <div className="official-match-results" aria-label="Completed official match results">
+      {fixtures.map((fixture) => (
+        <article className="official-match-row" key={fixture.id}>
+          <div className="official-match-meta">
+            <span>{fixture.date}</span>
+            <strong>{fixture.label}</strong>
+          </div>
+          <div className="official-match-scoreline">
+            <ScheduleTeamIdentity team={fixture.teams[0]} winner={fixture.teams[0].teamId === fixture.winnerId} />
+            <b>{fixture.score ? `${fixture.score[0]}-${fixture.score[1]}` : 'FT'}</b>
+            <ScheduleTeamIdentity team={fixture.teams[1]} winner={fixture.teams[1].teamId === fixture.winnerId} />
+          </div>
+          <div className="official-match-meta">
+            <span>FT</span>
+            <strong>{fixture.venue}</strong>
+          </div>
+        </article>
+      ))}
+    </div>
   )
 }
 
@@ -2047,7 +2087,7 @@ function LeaderboardPanel({
             stages={actualMapStages}
             title="Results"
           />
-          <OfficialResultsPanel actualResults={actualResults} />
+          <OfficialResultsPanel actualResults={actualResults} matchResults={matchResults} />
         </div>
       </section>
 
