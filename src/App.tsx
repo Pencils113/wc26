@@ -32,6 +32,7 @@ import {
 import { buildLeaderboard, scoreSubmission } from './lib/scoring'
 import { getActualTeamMapStages, getPredictionTeamMapStages } from './lib/mapProgress'
 import { KNOCKOUT_ROUND_ORDER, knockoutLayout } from './lib/knockoutLayout'
+import { fetchEspnScoreboardMatches, mergeMatchResults } from './lib/espnScoreboard'
 import {
   fetchRemoteActualResults,
   fetchRemoteMatches,
@@ -263,6 +264,7 @@ function App() {
   const [remoteSubmissions, setRemoteSubmissions] = useState<BracketSubmission[]>([])
   const [remoteActualResults, setRemoteActualResults] = useState<ActualResults | null>(null)
   const [remoteMatches, setRemoteMatches] = useState<MatchResult[]>([])
+  const [browserMatches, setBrowserMatches] = useState<MatchResult[]>([])
   const [leaderboardOnly, setLeaderboardOnly] = useState(false)
   const [dataError, setDataError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -270,6 +272,10 @@ function App() {
   const activeRoom = selectedRoomSlug ? roomBySlug[selectedRoomSlug] : null
   const liveSubmissions = hasSupabaseConfig ? remoteSubmissions : localSubmissions
   const actualResults = remoteActualResults ?? emptyActualResults
+  const liveMatchResults = useMemo(
+    () => mergeMatchResults(remoteMatches, browserMatches),
+    [browserMatches, remoteMatches],
+  )
   const visibleSubmissions = selectedRoomSlug
     ? liveSubmissions.filter((submission) => submission.roomSlug === selectedRoomSlug)
     : []
@@ -343,6 +349,41 @@ function App() {
       cancelled = true
       window.clearInterval(intervalId)
       unsubscribe()
+    }
+  }, [selectedRoomSlug])
+
+  useEffect(() => {
+    if (!selectedRoomSlug) return undefined
+
+    let cancelled = false
+    let activeController: AbortController | null = null
+
+    const refreshBrowserMatches = async () => {
+      activeController?.abort()
+      const controller = new AbortController()
+      activeController = controller
+
+      try {
+        const nextMatches = await fetchEspnScoreboardMatches(controller.signal)
+
+        if (!cancelled) {
+          setBrowserMatches(nextMatches)
+        }
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return
+        console.warn('ESPN browser score fetch failed', error)
+      }
+    }
+
+    void refreshBrowserMatches()
+    const intervalId = window.setInterval(() => {
+      void refreshBrowserMatches()
+    }, 30_000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      activeController?.abort()
     }
   }, [selectedRoomSlug])
 
@@ -532,7 +573,7 @@ function App() {
         <LeaderboardPanel
           actualResults={actualResults}
           entries={leaderboard}
-          matchResults={remoteMatches}
+          matchResults={liveMatchResults}
           previewSubmission={previewSubmission}
           room={activeRoom}
           onPreview={setPreviewSubmission}
