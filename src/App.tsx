@@ -33,6 +33,7 @@ import { buildLeaderboard, scoreSubmission } from './lib/scoring'
 import { getActualTeamMapStages, getPredictionTeamMapStages } from './lib/mapProgress'
 import { KNOCKOUT_ROUND_ORDER, knockoutLayout } from './lib/knockoutLayout'
 import { fetchEspnScoreboardMatches, mergeMatchResults } from './lib/espnScoreboard'
+import { buildCurrentGroupTables, buildProvisionalActualResults, type CurrentGroupTable } from './lib/groupStandings'
 import {
   fetchRemoteActualResults,
   fetchRemoteMatches,
@@ -276,6 +277,15 @@ function App() {
     () => mergeMatchResults(remoteMatches, browserMatches),
     [browserMatches, remoteMatches],
   )
+  const currentGroupTables = useMemo(
+    () => buildCurrentGroupTables(liveMatchResults),
+    [liveMatchResults],
+  )
+  const provisionalGroupCount = currentGroupTables.filter((table) => table.countedMatches > 0).length
+  const scoringResults = useMemo(
+    () => buildProvisionalActualResults(actualResults, currentGroupTables),
+    [actualResults, currentGroupTables],
+  )
   const visibleSubmissions = selectedRoomSlug
     ? liveSubmissions.filter((submission) => submission.roomSlug === selectedRoomSlug)
     : []
@@ -294,7 +304,7 @@ function App() {
       })
       .sort((a, b) => a.localeCompare(b))
   }, [liveSubmissions, selectedRoomSlug])
-  const leaderboard = buildLeaderboard(visibleSubmissions, actualResults)
+  const leaderboard = buildLeaderboard(visibleSubmissions, scoringResults)
   const currentSubmission = useMemo(() => {
     if (!roomSession || !selectedRoomSlug) return null
 
@@ -554,7 +564,7 @@ function App() {
 
       {step === 'build' && (
         <BuildScreen
-          actualResults={actualResults}
+          actualResults={scoringResults}
           bracketReady={bracketReady}
           champion={champion}
           filledGroupSlots={filledGroupSlots}
@@ -572,10 +582,13 @@ function App() {
       {step === 'leaderboard' && (
         <LeaderboardPanel
           actualResults={actualResults}
+          currentGroupTables={currentGroupTables}
           entries={leaderboard}
           matchResults={liveMatchResults}
           previewSubmission={previewSubmission}
+          provisionalGroupCount={provisionalGroupCount}
           room={activeRoom}
+          scoringResults={scoringResults}
           onPreview={setPreviewSubmission}
         />
       )}
@@ -1844,21 +1857,42 @@ function RulesInfoHover() {
   )
 }
 
-function OfficialResultsPanel({ actualResults }: { actualResults: ActualResults }) {
+function OfficialResultsPanel({
+  actualResults,
+  currentGroupTables,
+  provisionalResults,
+}: {
+  actualResults: ActualResults
+  currentGroupTables: CurrentGroupTable[]
+  provisionalResults: ActualResults
+}) {
   const actualPicks = useMemo(() => buildActualPicks(actualResults), [actualResults])
+  const countedGroupCount = currentGroupTables.filter((table) => table.countedMatches > 0).length
+  const hasCurrentStandings = countedGroupCount > 0
   const hasResults = hasActualResults(actualResults)
 
   return (
     <section className="official-results-panel">
       <div className="official-results-head">
         <div>
-          <p className="kicker">Official results</p>
-          <strong>{hasResults ? `Updated ${formatResultDate(actualResults.updatedAt)}` : 'Waiting for Matchday 1'}</strong>
+          <p className="kicker">{hasCurrentStandings ? 'Current standings' : 'Official results'}</p>
+          <strong>
+            {hasCurrentStandings
+              ? `${countedGroupCount}/12 groups active`
+              : hasResults
+                ? `Updated ${formatResultDate(actualResults.updatedAt)}`
+                : 'Waiting for Matchday 1'}
+          </strong>
         </div>
-        <span>{actualResults.source}</span>
+        <span>{hasCurrentStandings ? 'Provisional' : actualResults.source}</span>
       </div>
 
-      {!hasResults ? (
+      {hasCurrentStandings ? (
+        <CurrentStandingsGrid
+          currentGroupTables={currentGroupTables}
+          thirdPlaceAdvancers={provisionalResults.thirdPlaceAdvancers}
+        />
+      ) : !hasResults ? (
         <div className="official-empty">Correct results will appear here once games are complete.</div>
       ) : (
         <div className="official-review-stack">
@@ -1867,6 +1901,66 @@ function OfficialResultsPanel({ actualResults }: { actualResults: ActualResults 
         </div>
       )}
     </section>
+  )
+}
+
+function CurrentStandingsGrid({
+  currentGroupTables,
+  thirdPlaceAdvancers,
+}: {
+  currentGroupTables: CurrentGroupTable[]
+  thirdPlaceAdvancers: GroupId[]
+}) {
+  return (
+    <div className="current-standings-grid">
+      {currentGroupTables.map((table) => {
+        const groupStarted = table.countedMatches > 0
+
+        return (
+          <article className={groupStarted ? 'standings-card active' : 'standings-card'} key={table.group}>
+            <header>
+              <strong>Group {table.group}</strong>
+              <span>{table.countedMatches}/6</span>
+            </header>
+            <div className="standings-table">
+              <div className="standings-row standings-header">
+                <span>#</span>
+                <span>Team</span>
+                <span>W-D-L</span>
+                <span>GD</span>
+                <span>Pts</span>
+              </div>
+              {table.standings.map((standing, index) => {
+                const qualifies = groupStarted && (index < 2 || (index === 2 && thirdPlaceAdvancers.includes(table.group)))
+
+                return (
+                  <div className={qualifies ? 'standings-row qualifies' : 'standings-row'} key={standing.teamId}>
+                    <span>{index + 1}</span>
+                    <StandingsTeamIdentity teamId={standing.teamId} />
+                    <span>{standing.wins}-{standing.draws}-{standing.losses}</span>
+                    <span>{standing.goalDifference > 0 ? `+${standing.goalDifference}` : standing.goalDifference}</span>
+                    <strong>{standing.points}</strong>
+                  </div>
+                )
+              })}
+            </div>
+          </article>
+        )
+      })}
+    </div>
+  )
+}
+
+function StandingsTeamIdentity({ teamId }: { teamId: TeamId }) {
+  const team = teamsById[teamId]
+
+  return (
+    <span className="standings-team" title={team.name}>
+      <span className="flag-frame">
+        <img alt="" src={getFlagUrl(team.countryCode)} />
+      </span>
+      <strong>{team.code}</strong>
+    </span>
   )
 }
 
@@ -1965,21 +2059,28 @@ function ScheduleTeamIdentity({ team, winner = false }: { team: ScheduleTeam; wi
 
 function LeaderboardPanel({
   actualResults,
+  currentGroupTables,
   entries,
   matchResults,
   room,
+  scoringResults,
   previewSubmission,
+  provisionalGroupCount,
   onPreview,
 }: {
   actualResults: ActualResults
+  currentGroupTables: CurrentGroupTable[]
   entries: ReturnType<typeof buildLeaderboard>
   matchResults: MatchResult[]
   room: Room
+  scoringResults: ActualResults
   previewSubmission: BracketSubmission | null
+  provisionalGroupCount: number
   onPreview: (submission: BracketSubmission | null) => void
 }) {
   const selectedSubmission = previewSubmission
   const actualMapStages = useMemo(() => getActualTeamMapStages(actualResults), [actualResults])
+  const isProvisional = provisionalGroupCount > 0
 
   return (
     <div className={selectedSubmission ? 'leaderboard-shell with-detail' : 'leaderboard-shell'}>
@@ -1989,6 +2090,7 @@ function LeaderboardPanel({
           <div className="board-title-row">
             <RulesInfoHover />
             <strong>Leaderboard</strong>
+            {isProvisional && <em className="score-mode-pill">Live table</em>}
           </div>
         </div>
         <div className="board-primary">
@@ -2000,7 +2102,7 @@ function LeaderboardPanel({
               <span>Place</span>
               <span>KO</span>
               <span>Max</span>
-              <span>Score</span>
+              <span>{isProvisional ? 'Live' : 'Score'}</span>
             </div>
             {entries.map((entry, index) => {
               const championId = entry.champion
@@ -2047,16 +2149,16 @@ function LeaderboardPanel({
             stages={actualMapStages}
             title="Results"
           />
-          <OfficialResultsPanel actualResults={actualResults} />
+          <OfficialResultsPanel actualResults={actualResults} currentGroupTables={currentGroupTables} provisionalResults={scoringResults} />
         </div>
       </section>
 
       {selectedSubmission ? (
         <aside className="detail-rail">
-          <BracketSummary actualResults={actualResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
+          <BracketSummary actualResults={scoringResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
           <div className="detail-review-stack">
-            <ReviewBracket actualResults={actualResults} picks={selectedSubmission} />
-            <ReviewGroups actualResults={actualResults} picks={selectedSubmission} />
+            <ReviewBracket actualResults={scoringResults} picks={selectedSubmission} />
+            <ReviewGroups actualResults={scoringResults} picks={selectedSubmission} />
           </div>
         </aside>
       ) : (
