@@ -1,0 +1,36 @@
+name: Add One Bracket Submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      room_slug:
+        description: Room slug, for example sixseven
+        required: true
+      display_name:
+        description: Exact display name to add
+        required: true
+      picks_json:
+        description: Compact JSON picks payload
+        required: true
+      confirm:
+        description: Type add-one-submission
+        required: true
+
+jobs:
+  add-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/add-submission.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM_ADD_SUBMISSION: ${{ inputs.confirm }}
+          ADD_ROOM_SLUG: ${{ inputs.room_slug }}
+          ADD_DISPLAY_NAME: ${{ inputs.display_name }}
+          ADD_PICKS_JSON: ${{ inputs.picks_json }}
