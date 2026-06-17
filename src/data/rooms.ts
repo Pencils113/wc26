@@ -25,6 +25,14 @@ export const rooms: Room[] = [
     passwordHint: 'Pass code',
     lockAt: '2026-06-11T18:00:00.000Z',
   },
+  {
+    slug: 'master',
+    name: 'Master',
+    description: 'Combined prediction room.',
+    authMode: 'room_password',
+    passwordHint: 'Pass code',
+    lockAt: '2026-06-11T18:00:00.000Z',
+  },
 ]
 
 export const roomBySlug = Object.fromEntries(rooms.map((room) => [room.slug, room])) as Record<

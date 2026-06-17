@@ -83,6 +83,7 @@ const PASSCODES: Record<string, string> = {
   conway: 'conway',
   larooch: 'larooch',
   sixseven: 'sixseven',
+  imhoteponly: 'master',
 }
 const LOGO_SRC = `${import.meta.env.BASE_URL}favicon.png`
 

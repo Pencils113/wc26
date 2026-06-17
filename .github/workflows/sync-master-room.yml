@@ -1,0 +1,29 @@
+name: Sync Master Room
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type sync-master-room
+        required: true
+
+jobs:
+  sync-master-room:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/sync-master-room.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CONFIRM_SYNC_MASTER_ROOM: ${{ inputs.confirm }}
+          MASTER_ROOM_SLUG: master
+          MASTER_ROOM_NAME: Master
+          MASTER_ROOM_DESCRIPTION: Combined prediction room.
+          MASTER_ROOM_LOCK_AT: '2026-06-11T18:00:00Z'
+          SOURCE_ROOM_SLUGS: conway,larooch,sixseven
