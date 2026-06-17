@@ -15,12 +15,6 @@ const sourceRoomSlugs = (process.env.SOURCE_ROOM_SLUGS || 'conway,larooch,sixsev
   .map((slug) => slug.trim().toLowerCase())
   .filter(Boolean)
 
-const sourceLabels = {
-  conway: 'Conway',
-  larooch: 'Larooch',
-  sixseven: 'Purdue',
-}
-
 if (!supabaseUrl || !serviceRoleKey) {
   console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
   process.exit(1)
@@ -45,10 +39,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 
 const hashPicks = (picks) => crypto.createHash('sha256').update(JSON.stringify(picks)).digest('hex')
 const ownerKeyFromName = (name) => name.trim().replace(/\s+/g, ' ').toLowerCase()
-const copiedDisplayName = (submission) => {
-  const label = sourceLabels[submission.room_slug] || submission.room_name || submission.room_slug
-  return `${submission.display_name} (${label})`
-}
+const displayNameFromSource = (submission) => submission.display_name.trim().replace(/\s+/g, ' ')
 
 const { data: masterRooms, error: masterRoomError } = await supabase
   .from('rooms')
@@ -92,26 +83,76 @@ const { data: existingRows, error: existingError } = await supabase
 
 if (existingError) throw existingError
 
+const orderedSourceRows = [...sourceRows].sort((a, b) => {
+  const roomOrder = sourceRoomSlugs.indexOf(a.room_slug) - sourceRoomSlugs.indexOf(b.room_slug)
+  if (roomOrder !== 0) return roomOrder
+  return a.display_name.localeCompare(b.display_name)
+})
+const desiredByOwnerKey = new Map()
+const skippedDuplicates = []
+
+for (const source of orderedSourceRows) {
+  const displayName = displayNameFromSource(source)
+  const ownerKey = ownerKeyFromName(displayName)
+  const hash = hashPicks(source.picks)
+  const existingDesired = desiredByOwnerKey.get(ownerKey)
+
+  if (existingDesired) {
+    if (existingDesired.hash === hash) {
+      skippedDuplicates.push({
+        displayName,
+        roomSlug: source.room_slug,
+        keptRoomSlug: existingDesired.roomSlug,
+        hash,
+      })
+      continue
+    }
+
+    throw new Error(
+      `Duplicate display name with different picks: ${displayName} (${existingDesired.roomSlug}, ${source.room_slug})`,
+    )
+  }
+
+  desiredByOwnerKey.set(ownerKey, {
+    displayName,
+    hash,
+    ownerKey,
+    picks: source.picks,
+    roomSlug: source.room_slug,
+  })
+}
+
 const existingByOwnerKey = new Map((existingRows || []).map((row) => [row.owner_key, row]))
 const inserted = []
 const updated = []
+const deleted = []
 
-for (const source of sourceRows) {
-  const displayName = copiedDisplayName(source)
-  const ownerKey = ownerKeyFromName(displayName)
-  const existing = existingByOwnerKey.get(ownerKey)
+for (const row of existingRows || []) {
+  if (desiredByOwnerKey.has(row.owner_key)) continue
+
+  const { error: deleteError } = await supabase
+    .from('brackets')
+    .delete()
+    .eq('id', row.id)
+
+  if (deleteError) throw deleteError
+  deleted.push({ id: row.id, displayName: row.display_name })
+}
+
+for (const source of desiredByOwnerKey.values()) {
+  const existing = existingByOwnerKey.get(source.ownerKey)
 
   if (existing) {
     const { error: updateError } = await supabase
       .from('brackets')
       .update({
-        display_name: displayName,
+        display_name: source.displayName,
         picks: source.picks,
       })
       .eq('id', existing.id)
 
     if (updateError) throw updateError
-    updated.push({ id: existing.id, displayName, hash: hashPicks(source.picks) })
+    updated.push({ id: existing.id, displayName: source.displayName, hash: source.hash })
     continue
   }
 
@@ -119,23 +160,34 @@ for (const source of sourceRows) {
     .from('brackets')
     .insert({
       room_id: masterRoom.id,
-      owner_key: ownerKey,
-      display_name: displayName,
+      owner_key: source.ownerKey,
+      display_name: source.displayName,
       picks: source.picks,
     })
     .select('id')
 
   if (insertError) throw insertError
   const insertedId = insertedRows?.[0]?.id
-  if (!insertedId) throw new Error(`Insert did not return a bracket id for ${displayName}`)
-  inserted.push({ id: insertedId, displayName, hash: hashPicks(source.picks) })
+  if (!insertedId) throw new Error(`Insert did not return a bracket id for ${source.displayName}`)
+  inserted.push({ id: insertedId, displayName: source.displayName, hash: source.hash })
 }
 
 console.log(`Room synced: ${masterRoom.slug} / ${masterRoom.name}`)
 console.log(`Source submissions: ${sourceRows.length}`)
+console.log(`Unique submissions: ${desiredByOwnerKey.size}`)
+console.log(`Skipped duplicate names: ${skippedDuplicates.length}`)
 console.log(`Inserted: ${inserted.length}`)
 console.log(`Updated: ${updated.length}`)
+console.log(`Deleted: ${deleted.length}`)
+
+for (const row of skippedDuplicates.sort((a, b) => a.displayName.localeCompare(b.displayName))) {
+  console.log(`Skipped duplicate ${row.displayName}: kept ${row.keptRoomSlug}, skipped ${row.roomSlug} ${row.hash}`)
+}
 
 for (const row of [...inserted, ...updated].sort((a, b) => a.displayName.localeCompare(b.displayName))) {
   console.log(`${row.displayName}: ${row.id} ${row.hash}`)
+}
+
+for (const row of deleted.sort((a, b) => a.displayName.localeCompare(b.displayName))) {
+  console.log(`Deleted stale ${row.displayName}: ${row.id}`)
 }
