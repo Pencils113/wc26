@@ -1146,58 +1146,72 @@ function ReviewBracket({
   mode?: 'submission' | 'official'
   picks: BracketPicks
 }) {
-  const matches = buildResolvedBracket(picks)
-
   return (
     <section className="section-block review-section">
       <SectionHead kicker="02" title="Knockout" />
-      <div className="review-bracket-grid">
-        {KNOCKOUT_ROUND_ORDER.map((round) => (
-          matches
-            .filter((match) => match.round === round)
-            .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
-            .map((match) => {
-              const layout = knockoutLayout[match.id]
-              const actualWinner = actualResults.knockoutWinners[match.id]
-
-              return (
-                <article
-                  className="review-match"
-                  key={match.id}
-                  style={{
-                    gridColumn: layout.column,
-                    gridRow: `${layout.row} / span ${layout.rowSpan}`,
-                  }}
-                >
-                  <span className="review-match-meta">
-                    <span>{match.id}</span>
-                    {actualWinner && <strong>{teamsById[actualWinner]?.code}</strong>}
-                  </span>
-                  {match.teams.map((teamId, slotIndex) => {
-                    const selected = Boolean(teamId && match.selectedWinner === teamId)
-                    const result = mode === 'submission' ? getKnockoutPickResult(teamId, match.selectedWinner, match.points, actualWinner) : null
-                    const resultClass = result ? ` result-${result.status}` : ''
-                    const pointValue = result && 'points' in result ? result.points ?? 0 : 0
-
-                    return (
-                      <div className={`review-pick${selected ? ' selected' : ''}${resultClass ? ` ${resultClass}` : ''}`} key={`${match.id}-${slotIndex}`}>
-                        {teamId ? <TeamIdentity compact teamId={teamId} /> : <small>{match.slots[slotIndex].label}</small>}
-                        {result && (
-                          <span className={result.status === 'wrong' ? 'review-result-pill wrong' : 'review-result-pill correct'}>
-                            {result.status === 'wrong' ? <X size={12} /> : <Check size={12} />}
-                            <small>{result.label}</small>
-                            {pointValue > 0 && <b className="point-chip">+{pointValue}</b>}
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </article>
-              )
-            })
-        ))}
-      </div>
+      <KnockoutReviewGrid actualResults={actualResults} mode={mode} picks={picks} />
     </section>
+  )
+}
+
+function KnockoutReviewGrid({
+  actualResults = emptyActualResults,
+  mode = 'submission',
+  picks,
+}: {
+  actualResults?: ActualResults
+  mode?: 'submission' | 'official'
+  picks: BracketPicks
+}) {
+  const matches = buildResolvedBracket(picks)
+
+  return (
+    <div className="review-bracket-grid">
+      {KNOCKOUT_ROUND_ORDER.map((round) => (
+        matches
+          .filter((match) => match.round === round)
+          .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
+          .map((match) => {
+            const layout = knockoutLayout[match.id]
+            const actualWinner = actualResults.knockoutWinners[match.id]
+
+            return (
+              <article
+                className="review-match"
+                key={match.id}
+                style={{
+                  gridColumn: layout.column,
+                  gridRow: `${layout.row} / span ${layout.rowSpan}`,
+                }}
+              >
+                <span className="review-match-meta">
+                  <span>{match.id}</span>
+                  {actualWinner && <strong>{teamsById[actualWinner]?.code}</strong>}
+                </span>
+                {match.teams.map((teamId, slotIndex) => {
+                  const selected = Boolean(teamId && match.selectedWinner === teamId)
+                  const result = mode === 'submission' ? getKnockoutPickResult(teamId, match.selectedWinner, match.points, actualWinner) : null
+                  const resultClass = result ? ` result-${result.status}` : ''
+                  const pointValue = result && 'points' in result ? result.points ?? 0 : 0
+
+                  return (
+                    <div className={`review-pick${selected ? ' selected' : ''}${resultClass ? ` ${resultClass}` : ''}`} key={`${match.id}-${slotIndex}`}>
+                      {teamId ? <TeamIdentity compact teamId={teamId} /> : <small>{match.slots[slotIndex].label}</small>}
+                      {result && (
+                        <span className={result.status === 'wrong' ? 'review-result-pill wrong' : 'review-result-pill correct'}>
+                          {result.status === 'wrong' ? <X size={12} /> : <Check size={12} />}
+                          <small>{result.label}</small>
+                          {pointValue > 0 && <b className="point-chip">+{pointValue}</b>}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </article>
+            )
+          })
+      ))}
+    </div>
   )
 }
 
@@ -1861,13 +1875,15 @@ function RulesInfoHover() {
 function OfficialResultsPanel({
   actualResults,
   currentGroupTables,
-  provisionalResults,
 }: {
   actualResults: ActualResults
   currentGroupTables: CurrentGroupTable[]
-  provisionalResults: ActualResults
 }) {
   const actualPicks = useMemo(() => buildActualPicks(actualResults), [actualResults])
+  const currentKnockoutPicks = useMemo(
+    () => buildCurrentStandingsKnockoutPicks(currentGroupTables),
+    [currentGroupTables],
+  )
   const countedGroupCount = currentGroupTables.filter((table) => table.countedMatches > 0).length
   const hasCurrentStandings = countedGroupCount > 0
   const hasResults = hasActualResults(actualResults)
@@ -1889,10 +1905,13 @@ function OfficialResultsPanel({
       </div>
 
       {hasCurrentStandings ? (
-        <CurrentStandingsGrid
-          currentGroupTables={currentGroupTables}
-          thirdPlaceAdvancers={provisionalResults.thirdPlaceAdvancers}
-        />
+        <div className="current-results-stack">
+          <CurrentStandingsGrid
+            currentGroupTables={currentGroupTables}
+            thirdPlaceAdvancers={currentKnockoutPicks.thirdPlaceAdvancers}
+          />
+          <CurrentKnockoutProjection picks={currentKnockoutPicks} />
+        </div>
       ) : !hasResults ? (
         <div className="official-empty">Correct results will appear here once games are complete.</div>
       ) : (
@@ -1901,6 +1920,70 @@ function OfficialResultsPanel({
           <ReviewBracket actualResults={actualResults} mode="official" picks={actualPicks} />
         </div>
       )}
+    </section>
+  )
+}
+
+function buildCurrentStandingsKnockoutPicks(currentGroupTables: CurrentGroupTable[]): BracketPicks {
+  const tablesByGroup = new Map(currentGroupTables.map((table) => [table.group, table]))
+  const groupOrder = GROUP_IDS.reduce(
+    (order, group) => {
+      const standings = tablesByGroup.get(group)?.standings ?? []
+      order[group] = [
+        standings[0]?.teamId ?? null,
+        standings[1]?.teamId ?? null,
+        standings[2]?.teamId ?? null,
+        standings[3]?.teamId ?? null,
+      ]
+      return order
+    },
+    {} as BracketPicks['groupOrder'],
+  )
+
+  const thirdPlaceAdvancers = currentGroupTables
+    .map((table) => table.standings[2])
+    .filter((standing): standing is NonNullable<typeof standing> => Boolean(standing))
+    .sort((left, right) => {
+      const pointsDelta = right.points - left.points
+      if (pointsDelta !== 0) return pointsDelta
+
+      const goalDifferenceDelta = right.goalDifference - left.goalDifference
+      if (goalDifferenceDelta !== 0) return goalDifferenceDelta
+
+      const goalsForDelta = right.goalsFor - left.goalsFor
+      if (goalsForDelta !== 0) return goalsForDelta
+
+      const winsDelta = right.wins - left.wins
+      if (winsDelta !== 0) return winsDelta
+
+      const rankDelta = teamsById[left.teamId].fifaRank - teamsById[right.teamId].fifaRank
+      if (rankDelta !== 0) return rankDelta
+
+      return GROUP_IDS.indexOf(left.group) - GROUP_IDS.indexOf(right.group)
+    })
+    .slice(0, 8)
+    .map((standing) => standing.group)
+
+  return {
+    groupOrder,
+    thirdPlaceAdvancers,
+    knockoutWinners: {},
+  }
+}
+
+function CurrentKnockoutProjection({ picks }: { picks: BracketPicks }) {
+  return (
+    <section className="current-knockout-projection">
+      <div className="current-knockout-head">
+        <div>
+          <p className="kicker">Knockout</p>
+          <strong>If standings held</strong>
+        </div>
+        <span>Round of 32 seeded</span>
+      </div>
+      <div className="current-knockout-scroll">
+        <KnockoutReviewGrid mode="official" picks={picks} />
+      </div>
     </section>
   )
 }
@@ -2150,7 +2233,7 @@ function LeaderboardPanel({
             stages={actualMapStages}
             title="Results"
           />
-          <OfficialResultsPanel actualResults={actualResults} currentGroupTables={currentGroupTables} provisionalResults={scoringResults} />
+          <OfficialResultsPanel actualResults={actualResults} currentGroupTables={currentGroupTables} />
         </div>
       </section>
 

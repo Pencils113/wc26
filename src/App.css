@@ -1555,6 +1555,11 @@
   font-size: 12px;
 }
 
+.current-results-stack {
+  display: grid;
+  gap: 10px;
+}
+
 .current-standings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(218px, 1fr));
@@ -1664,6 +1669,49 @@
 .standings-row > strong {
   color: var(--text);
   font-size: 12px;
+}
+
+.current-knockout-projection {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 7px;
+  background: #020202;
+}
+
+.current-knockout-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.current-knockout-head .kicker {
+  margin: 0 0 3px;
+}
+
+.current-knockout-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.current-knockout-head > span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.current-knockout-scroll {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.current-knockout-scroll .review-bracket-grid {
+  min-width: 820px;
 }
 
 .official-review-stack {
