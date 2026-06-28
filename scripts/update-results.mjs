@@ -145,7 +145,41 @@ const groups = Object.entries(teamGroup).reduce((acc, [teamId, group]) => {
 }, {})
 
 const groupMatchIds = Array.from({ length: 72 }, (_, index) => `G${String(index + 1).padStart(2, '0')}`)
-const knockoutMatchIds = Array.from({ length: 32 }, (_, index) => `M${index + 73}`)
+// ESPN returns knockout fixtures chronologically; FIFA match numbers are bracket-path IDs.
+const knockoutMatchIds = [
+  'M73',
+  'M76',
+  'M74',
+  'M75',
+  'M78',
+  'M77',
+  'M79',
+  'M80',
+  'M82',
+  'M81',
+  'M84',
+  'M83',
+  'M85',
+  'M88',
+  'M86',
+  'M87',
+  'M90',
+  'M89',
+  'M91',
+  'M92',
+  'M93',
+  'M94',
+  'M95',
+  'M96',
+  'M97',
+  'M98',
+  'M99',
+  'M100',
+  'M101',
+  'M102',
+  'M103',
+  'M104',
+]
 const roundOf32MatchIds = new Set(knockoutMatchIds.slice(0, 16))
 const internalMatchIds = [...groupMatchIds, ...knockoutMatchIds]
 const bracketMatchIds = new Set(knockoutMatchIds.filter((id) => id !== 'M103'))
