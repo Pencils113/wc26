@@ -49,7 +49,7 @@ import {
   upsertLocalSubmission,
 } from './lib/storage'
 import { hasSupabaseConfig } from './lib/supabaseClient'
-import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type MatchResult, type Room, type TeamId } from './types'
+import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type MatchResult, type ResolvedMatch, type Room, type TeamId } from './types'
 
 type AppStep = 'gate' | 'name' | 'rulesIntro' | 'build' | 'leaderboard'
 
@@ -123,6 +123,8 @@ const KNOCKOUT_TIMES: Record<string, string> = {
   M102: '3:00 PM ET',
   M104: '3:00 PM ET',
 }
+const ROUND_OF_32_MATCH_IDS = Array.from({ length: 16 }, (_, index) => `M${index + 73}`)
+const ROUND_OF_32_MATCH_ID_SET = new Set(ROUND_OF_32_MATCH_IDS)
 
 type GroupStageFixtureDefinition = readonly [
   id: string,
@@ -282,7 +284,11 @@ function App() {
     () => buildCurrentGroupTables(liveMatchResults),
     [liveMatchResults],
   )
-  const provisionalGroupCount = currentGroupTables.filter((table) => table.countedMatches > 0).length
+  const roundOf32KnownSlots = useMemo(() => countKnownRoundOf32TeamSlots(liveMatchResults), [liveMatchResults])
+  const groupStageResolved = roundOf32KnownSlots >= 32
+  const provisionalGroupCount = groupStageResolved
+    ? 0
+    : currentGroupTables.filter((table) => table.countedMatches > 0).length
   const scoringResults = useMemo(
     () => buildProvisionalActualResults(actualResults, currentGroupTables),
     [actualResults, currentGroupTables],
@@ -1156,14 +1162,16 @@ function ReviewBracket({
 
 function KnockoutReviewGrid({
   actualResults = emptyActualResults,
+  matches: resolvedMatches,
   mode = 'submission',
   picks,
 }: {
   actualResults?: ActualResults
+  matches?: ResolvedMatch[]
   mode?: 'submission' | 'official'
   picks: BracketPicks
 }) {
-  const matches = buildResolvedBracket(picks)
+  const matches = resolvedMatches ?? buildResolvedBracket(picks)
 
   return (
     <div className="review-bracket-grid">
@@ -1875,42 +1883,65 @@ function RulesInfoHover() {
 function OfficialResultsPanel({
   actualResults,
   currentGroupTables,
+  matchResults,
 }: {
   actualResults: ActualResults
   currentGroupTables: CurrentGroupTable[]
+  matchResults: MatchResult[]
 }) {
   const actualPicks = useMemo(() => buildActualPicks(actualResults), [actualResults])
   const currentKnockoutPicks = useMemo(
     () => buildCurrentStandingsKnockoutPicks(currentGroupTables),
     [currentGroupTables],
   )
+  const officialKnockoutMatches = useMemo(
+    () => buildKnockoutMatchesFromMatchResults(currentKnockoutPicks, matchResults),
+    [currentKnockoutPicks, matchResults],
+  )
+  const officialThirdPlaceAdvancers = useMemo(
+    () => getThirdPlaceAdvancersFromRoundOf32(currentKnockoutPicks.groupOrder, matchResults),
+    [currentKnockoutPicks.groupOrder, matchResults],
+  )
   const countedGroupCount = currentGroupTables.filter((table) => table.countedMatches > 0).length
   const hasCurrentStandings = countedGroupCount > 0
   const hasResults = hasActualResults(actualResults)
+  const roundOf32KnownSlots = countKnownRoundOf32TeamSlots(matchResults)
+  const groupStageResolved = roundOf32KnownSlots >= 32 ||
+    GROUP_IDS.every((group) => (actualResults.groupOrder[group]?.length ?? 0) >= 4)
+  const activeThirdPlaceAdvancers = officialThirdPlaceAdvancers.length > 0
+    ? officialThirdPlaceAdvancers
+    : currentKnockoutPicks.thirdPlaceAdvancers
 
   return (
     <section className="official-results-panel">
       <div className="official-results-head">
         <div>
-          <p className="kicker">{hasCurrentStandings ? 'Current standings' : 'Official results'}</p>
+          <p className="kicker">{groupStageResolved ? 'Group stage final' : hasCurrentStandings ? 'Current standings' : 'Official results'}</p>
           <strong>
-            {hasCurrentStandings
+            {groupStageResolved
+              ? 'Knockout bracket set'
+              : hasCurrentStandings
               ? `${countedGroupCount}/12 groups active`
               : hasResults
                 ? `Updated ${formatResultDate(actualResults.updatedAt)}`
                 : 'Waiting for Matchday 1'}
           </strong>
         </div>
-        <span>{hasCurrentStandings ? 'Provisional' : actualResults.source}</span>
+        <span>{groupStageResolved ? 'Official' : hasCurrentStandings ? 'Provisional' : actualResults.source}</span>
       </div>
 
       {hasCurrentStandings ? (
         <div className="current-results-stack">
           <CurrentStandingsGrid
             currentGroupTables={currentGroupTables}
-            thirdPlaceAdvancers={currentKnockoutPicks.thirdPlaceAdvancers}
+            thirdPlaceAdvancers={activeThirdPlaceAdvancers}
           />
-          <CurrentKnockoutProjection picks={currentKnockoutPicks} />
+          <CurrentKnockoutProjection
+            isFinal={groupStageResolved}
+            knownSlots={roundOf32KnownSlots}
+            matches={roundOf32KnownSlots > 0 ? officialKnockoutMatches : undefined}
+            picks={currentKnockoutPicks}
+          />
         </div>
       ) : !hasResults ? (
         <div className="official-empty">Correct results will appear here once games are complete.</div>
@@ -1971,18 +2002,74 @@ function buildCurrentStandingsKnockoutPicks(currentGroupTables: CurrentGroupTabl
   }
 }
 
-function CurrentKnockoutProjection({ picks }: { picks: BracketPicks }) {
+function buildKnockoutMatchesFromMatchResults(picks: BracketPicks, matchResults: MatchResult[]): ResolvedMatch[] {
+  const matchesById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
+
+  return buildResolvedBracket(picks).map((match) => {
+    const matchResult = matchesById.get(match.id)
+    const teams = [
+      matchResult?.homeTeamId ?? match.teams[0],
+      matchResult?.awayTeamId ?? match.teams[1],
+    ] as [TeamId | null, TeamId | null]
+    const selectedWinner = match.selectedWinner && teams.includes(match.selectedWinner)
+      ? match.selectedWinner
+      : null
+
+    return {
+      ...match,
+      teams,
+      selectedWinner,
+    }
+  })
+}
+
+function countKnownRoundOf32TeamSlots(matchResults: MatchResult[]) {
+  return matchResults.reduce((count, matchResult) => {
+    if (!ROUND_OF_32_MATCH_ID_SET.has(matchResult.id)) return count
+    return count + (matchResult.homeTeamId ? 1 : 0) + (matchResult.awayTeamId ? 1 : 0)
+  }, 0)
+}
+
+function getThirdPlaceAdvancersFromRoundOf32(
+  groupOrder: BracketPicks['groupOrder'],
+  matchResults: MatchResult[],
+): GroupId[] {
+  const roundOf32TeamIds = new Set<TeamId>()
+
+  for (const matchResult of matchResults) {
+    if (!ROUND_OF_32_MATCH_ID_SET.has(matchResult.id)) continue
+    if (matchResult.homeTeamId) roundOf32TeamIds.add(matchResult.homeTeamId)
+    if (matchResult.awayTeamId) roundOf32TeamIds.add(matchResult.awayTeamId)
+  }
+
+  return GROUP_IDS.filter((group) => {
+    const thirdPlaceTeamId = groupOrder[group][2]
+    return Boolean(thirdPlaceTeamId && roundOf32TeamIds.has(thirdPlaceTeamId))
+  })
+}
+
+function CurrentKnockoutProjection({
+  isFinal,
+  knownSlots,
+  matches,
+  picks,
+}: {
+  isFinal: boolean
+  knownSlots: number
+  matches?: ResolvedMatch[]
+  picks: BracketPicks
+}) {
   return (
     <section className="current-knockout-projection">
       <div className="current-knockout-head">
         <div>
           <p className="kicker">Knockout</p>
-          <strong>If standings held</strong>
+          <strong>{isFinal ? 'Knockout bracket' : 'If standings held'}</strong>
         </div>
-        <span>Round of 32 seeded</span>
+        <span>{isFinal ? 'Round of 32 set' : knownSlots > 0 ? `${knownSlots}/32 slots known` : 'Round of 32 seeded'}</span>
       </div>
       <div className="current-knockout-scroll">
-        <KnockoutReviewGrid mode="official" picks={picks} />
+        <KnockoutReviewGrid matches={matches} mode="official" picks={picks} />
       </div>
     </section>
   )
@@ -2163,8 +2250,11 @@ function LeaderboardPanel({
   onPreview: (submission: BracketSubmission | null) => void
 }) {
   const selectedSubmission = previewSubmission
-  const actualMapStages = useMemo(() => getActualTeamMapStages(actualResults), [actualResults])
+  const actualMapStages = useMemo(() => getActualTeamMapStages(scoringResults), [scoringResults])
   const isProvisional = provisionalGroupCount > 0
+  const resultsMapNote = isProvisional
+    ? 'Live group table feeding scores'
+    : 'Group stage final; knockout results update here'
 
   return (
     <div className={selectedSubmission ? 'leaderboard-shell with-detail' : 'leaderboard-shell'}>
@@ -2229,11 +2319,11 @@ function LeaderboardPanel({
           <WorldCupMap
             compact
             kicker="Map"
-            note="Results will fill in here"
+            note={resultsMapNote}
             stages={actualMapStages}
             title="Results"
           />
-          <OfficialResultsPanel actualResults={actualResults} currentGroupTables={currentGroupTables} />
+          <OfficialResultsPanel actualResults={actualResults} currentGroupTables={currentGroupTables} matchResults={matchResults} />
         </div>
       </section>
 

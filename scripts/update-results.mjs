@@ -72,6 +72,21 @@ const teamNameToId = {
   Colombia: 'colombia',
 }
 
+const teamAliasToId = {
+  ...teamNameToId,
+  USA: 'united-states',
+  CAN: 'canada',
+  BIH: 'bosnia-herzegovina',
+  BRA: 'brazil',
+  MAR: 'morocco',
+  ESP: 'spain',
+  CIV: 'cote-divoire',
+  CPV: 'cabo-verde',
+  COD: 'congo-dr',
+  ALG: 'algeria',
+  AUT: 'austria',
+}
+
 const teamGroup = {
   mexico: 'A',
   'south-africa': 'A',
@@ -131,6 +146,7 @@ const groups = Object.entries(teamGroup).reduce((acc, [teamId, group]) => {
 
 const groupMatchIds = Array.from({ length: 72 }, (_, index) => `G${String(index + 1).padStart(2, '0')}`)
 const knockoutMatchIds = Array.from({ length: 32 }, (_, index) => `M${index + 73}`)
+const roundOf32MatchIds = new Set(knockoutMatchIds.slice(0, 16))
 const internalMatchIds = [...groupMatchIds, ...knockoutMatchIds]
 const bracketMatchIds = new Set(knockoutMatchIds.filter((id) => id !== 'M103'))
 
@@ -231,8 +247,14 @@ function mapEventToRow(event, index) {
 }
 
 function getTeamId(competitor) {
-  const displayName = competitor?.team?.displayName
-  return displayName ? teamNameToId[displayName] ?? null : null
+  const team = competitor?.team ?? {}
+  const candidates = [team.displayName, team.shortDisplayName, team.name, team.abbreviation]
+
+  for (const candidate of candidates) {
+    if (candidate && teamAliasToId[candidate]) return teamAliasToId[candidate]
+  }
+
+  return null
 }
 
 function parseScore(score) {
@@ -331,15 +353,32 @@ function deriveActualResults(rows) {
     thirdPlaceCandidates.push(ordered[2])
   }
 
-  const thirdPlaceAdvancers = Object.keys(groupOrder).length === 12
-    ? sortStandings(thirdPlaceCandidates).slice(0, 8).map((standing) => standing.group)
-    : []
+  const officialThirdPlaceAdvancers = deriveThirdPlaceAdvancersFromRoundOf32(groupOrder, rows)
+  const thirdPlaceAdvancers = officialThirdPlaceAdvancers.length === 8
+    ? officialThirdPlaceAdvancers
+    : Object.keys(groupOrder).length === 12
+      ? sortStandings(thirdPlaceCandidates).slice(0, 8).map((standing) => standing.group)
+      : []
 
   return {
     groupOrder,
     thirdPlaceAdvancers,
     knockoutWinners,
   }
+}
+
+function deriveThirdPlaceAdvancersFromRoundOf32(groupOrder, rows) {
+  const roundOf32TeamIds = new Set()
+
+  for (const row of rows) {
+    if (!roundOf32MatchIds.has(row.id)) continue
+    if (row.home_team_id) roundOf32TeamIds.add(row.home_team_id)
+    if (row.away_team_id) roundOf32TeamIds.add(row.away_team_id)
+  }
+
+  return Object.entries(groupOrder)
+    .filter(([, order]) => order[2] && roundOf32TeamIds.has(order[2]))
+    .map(([group]) => group)
 }
 
 function sortStandings(standings) {

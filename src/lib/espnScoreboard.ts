@@ -55,6 +55,21 @@ const teamNameToId: Record<string, TeamId> = {
   Colombia: 'colombia',
 }
 
+const teamAliasToId: Record<string, TeamId> = {
+  ...teamNameToId,
+  USA: 'united-states',
+  CAN: 'canada',
+  BIH: 'bosnia-herzegovina',
+  BRA: 'brazil',
+  MAR: 'morocco',
+  ESP: 'spain',
+  CIV: 'cote-divoire',
+  CPV: 'cabo-verde',
+  COD: 'congo-dr',
+  ALG: 'algeria',
+  AUT: 'austria',
+}
+
 const teamGroup: Record<TeamId, string> = {
   mexico: 'A',
   'south-africa': 'A',
@@ -157,6 +172,9 @@ interface EspnCompetitor {
   winner?: boolean
   team?: {
     displayName?: string
+    shortDisplayName?: string
+    name?: string
+    abbreviation?: string
   }
 }
 
@@ -259,8 +277,11 @@ function mapEventToMatchResult(event: EspnEvent, index: number): MatchResult {
 }
 
 function getTeamId(competitor: EspnCompetitor | undefined) {
-  const displayName = competitor?.team?.displayName
-  return displayName ? teamNameToId[displayName] : undefined
+  const team = competitor?.team
+  const candidates = [team?.displayName, team?.shortDisplayName, team?.name, team?.abbreviation]
+  const match = candidates.find((candidate): candidate is string => Boolean(candidate && teamAliasToId[candidate]))
+
+  return match ? teamAliasToId[match] : undefined
 }
 
 function parseScore(score: string | number | undefined) {
