@@ -1,6 +1,6 @@
 import { knockoutMatches } from '../data/bracket'
 import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type KnockoutRound, type LeaderboardEntry, type MatchResult, type ScoreBreakdown, type TeamId } from '../types'
-import { buildResolvedBracket, getChampion } from './bracket'
+import { buildResolvedBracket, getStoredChampion } from './bracket'
 
 const GROUP_ADVANCER_POINTS = 2
 const GROUP_WINNER_POINTS = 3
@@ -314,7 +314,7 @@ export const buildLeaderboard = (
     .map((submission) => ({
       submission,
       score: scoreSubmission(submission, actualResults, matchResults),
-      champion: getChampion(submission),
+      champion: getStoredChampion(submission),
     }))
     .sort((left, right) => {
       if (right.score.total !== left.score.total) return right.score.total - left.score.total

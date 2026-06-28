@@ -1,6 +1,6 @@
 import { knockoutMatches } from '../data/bracket'
 import { teams, teamsByGroup, teamsById } from '../data/teams'
-import { GROUP_IDS, type BracketPicks, type EntrantSlot, type GroupId, type ResolvedMatch, type TeamId } from '../types'
+import { GROUP_IDS, type BracketPicks, type EntrantSlot, type GroupId, type KnockoutRound, type ResolvedMatch, type TeamId } from '../types'
 
 export const roundLabels = {
   round32: 'Round of 32',
@@ -143,6 +143,101 @@ export const isGroupStageComplete = (picks: BracketPicks) =>
 export const getChampion = (picks: BracketPicks) => {
   const final = buildResolvedBracket(picks).find((match) => match.id === 'M104')
   return final?.selectedWinner ?? null
+}
+
+export const getStoredChampion = (picks: BracketPicks) =>
+  getChampion(picks) ?? picks.knockoutWinners.M104 ?? null
+
+const knockoutRoundRank: Record<KnockoutRound, number> = {
+  round32: 1,
+  round16: 2,
+  quarterfinal: 3,
+  semifinal: 4,
+  final: 5,
+}
+
+const getStoredWinnerRound = (matchId: string): KnockoutRound | null => {
+  const matchNumber = Number(matchId.slice(1))
+  if (!Number.isFinite(matchNumber)) return null
+  if (matchNumber >= 73 && matchNumber <= 88) return 'round32'
+  if (matchNumber >= 89 && matchNumber <= 96) return 'round16'
+  if (matchNumber >= 97 && matchNumber <= 100) return 'quarterfinal'
+  if (matchNumber >= 101 && matchNumber <= 102) return 'semifinal'
+  if (matchNumber === 104) return 'final'
+  return null
+}
+
+const getStoredTeamsByRound = (picks: BracketPicks) => {
+  const teamsByRound = new Map<KnockoutRound, Set<TeamId>>()
+  const bestRoundRankByTeam = new Map<TeamId, number>()
+
+  Object.entries(picks.knockoutWinners).forEach(([matchId, teamId]) => {
+    const round = getStoredWinnerRound(matchId)
+    if (!round) return
+
+    const teams = teamsByRound.get(round) ?? new Set<TeamId>()
+    teams.add(teamId)
+    teamsByRound.set(round, teams)
+
+    const rank = knockoutRoundRank[round]
+    const previousRank = bestRoundRankByTeam.get(teamId) ?? 0
+    if (rank > previousRank) bestRoundRankByTeam.set(teamId, rank)
+  })
+
+  return { teamsByRound, bestRoundRankByTeam }
+}
+
+const chooseNormalizedWinner = (
+  teams: [TeamId | null, TeamId | null],
+  round: KnockoutRound,
+  storedWinner: TeamId | undefined,
+  teamsByRound: Map<KnockoutRound, Set<TeamId>>,
+  bestRoundRankByTeam: Map<TeamId, number>,
+) => {
+  const roundTeams = teamsByRound.get(round)
+  const candidates = teams.filter((teamId): teamId is TeamId => Boolean(teamId && roundTeams?.has(teamId)))
+  const fallbackCandidates = candidates.length > 0
+    ? candidates
+    : teams.filter((teamId): teamId is TeamId => Boolean(teamId && bestRoundRankByTeam.has(teamId)))
+
+  if (fallbackCandidates.length === 0) return null
+  if (fallbackCandidates.length === 1) return fallbackCandidates[0]
+
+  return fallbackCandidates
+    .slice()
+    .sort((left, right) => {
+      const rankDelta = (bestRoundRankByTeam.get(right) ?? 0) - (bestRoundRankByTeam.get(left) ?? 0)
+      if (rankDelta !== 0) return rankDelta
+      if (storedWinner === left) return -1
+      if (storedWinner === right) return 1
+      return teams.indexOf(left) - teams.indexOf(right)
+    })[0]
+}
+
+export const normalizeBracketPicks = <T extends BracketPicks>(picks: T): T => {
+  const { teamsByRound, bestRoundRankByTeam } = getStoredTeamsByRound(picks)
+  const thirdAssignments = resolveThirdPlaceAssignments(picks)
+  const normalizedWinners: Record<string, TeamId> = {}
+
+  for (const match of knockoutMatches) {
+    const teamsForMatch = match.slots.map((slot, slotIndex) =>
+      resolveSlot(slot, `${match.id}:${slotIndex}`, picks, normalizedWinners, thirdAssignments),
+    ) as [TeamId | null, TeamId | null]
+    const winner = chooseNormalizedWinner(
+      teamsForMatch,
+      match.round,
+      picks.knockoutWinners[match.id],
+      teamsByRound,
+      bestRoundRankByTeam,
+    )
+
+    if (winner) normalizedWinners[match.id] = winner
+  }
+
+  return {
+    ...picks,
+    knockoutWinners: normalizedWinners,
+  }
 }
 
 export const setWinner = (picks: BracketPicks, matchId: string, winnerId: TeamId): BracketPicks => ({

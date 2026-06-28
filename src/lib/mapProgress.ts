@@ -1,6 +1,6 @@
 import { teams } from '../data/teams'
 import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type KnockoutRound, type TeamId } from '../types'
-import { buildResolvedBracket, getChampion } from './bracket'
+import { buildResolvedBracket, getStoredChampion } from './bracket'
 
 export type MapStage =
   | 'field'
@@ -68,7 +68,7 @@ export const getPredictionTeamMapStages = (picks: BracketPicks): TeamMapStages =
     }
   }
 
-  promote(stages, getChampion(picks), 'champion')
+  promote(stages, getStoredChampion(picks), 'champion')
   return stages
 }
 

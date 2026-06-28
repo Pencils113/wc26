@@ -21,9 +21,11 @@ import {
   createInitialPicks,
   getChampion,
   getFlagUrl,
+  getStoredChampion,
   getTeamSeedLabel,
   isBracketComplete,
   isGroupStageComplete,
+  normalizeBracketPicks,
   placeTeamInGroup,
   removeTeamFromGroup,
   setWinner,
@@ -444,11 +446,7 @@ function App() {
       setLeaderboardOnly(false)
       setPicks(
         existing
-          ? {
-              groupOrder: existing.groupOrder,
-              thirdPlaceAdvancers: existing.thirdPlaceAdvancers,
-              knockoutWinners: existing.knockoutWinners,
-            }
+          ? normalizeBracketPicks(existing)
           : createInitialPicks(),
       )
       setDataError('')
@@ -466,11 +464,7 @@ function App() {
 
     const existing = findSubmissionForSession(liveSubmissions, selectedRoomSlug, roomSession)
     if (existing) {
-      setPicks({
-        groupOrder: existing.groupOrder,
-        thirdPlaceAdvancers: existing.thirdPlaceAdvancers,
-        knockoutWinners: existing.knockoutWinners,
-      })
+      setPicks(normalizeBracketPicks(existing))
       setLeaderboardOnly(false)
       setStep('leaderboard')
       return
@@ -2250,6 +2244,10 @@ function LeaderboardPanel({
   onPreview: (submission: BracketSubmission | null) => void
 }) {
   const selectedSubmission = previewSubmission
+  const displaySubmission = useMemo(
+    () => selectedSubmission ? normalizeBracketPicks(selectedSubmission) : null,
+    [selectedSubmission],
+  )
   const actualMapStages = useMemo(() => getActualTeamMapStages(scoringResults), [scoringResults])
   const isProvisional = provisionalGroupCount > 0
   const resultsMapNote = isProvisional
@@ -2329,11 +2327,15 @@ function LeaderboardPanel({
 
       {selectedSubmission ? (
         <aside className="detail-rail">
-          <BracketSummary actualResults={scoringResults} matchResults={matchResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
-          <div className="detail-review-stack">
-            <ReviewBracket actualResults={scoringResults} picks={selectedSubmission} />
-            <ReviewGroups actualResults={scoringResults} picks={selectedSubmission} />
-          </div>
+          {displaySubmission && (
+            <>
+              <BracketSummary actualResults={scoringResults} matchResults={matchResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
+              <div className="detail-review-stack">
+                <ReviewBracket actualResults={scoringResults} picks={displaySubmission} />
+                <ReviewGroups actualResults={scoringResults} picks={displaySubmission} />
+              </div>
+            </>
+          )}
         </aside>
       ) : (
         <LiveSchedulePanel actualResults={actualResults} matchResults={matchResults} />
@@ -2363,7 +2365,7 @@ function BracketSummary({
   submission: BracketSubmission
   onClose: () => void
 }) {
-  const champion = getChampion(submission)
+  const champion = getStoredChampion(submission)
   const score = scoreSubmission(submission, actualResults, matchResults)
 
   return (
