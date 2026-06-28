@@ -1,5 +1,5 @@
 import { knockoutMatches } from '../data/bracket'
-import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type LeaderboardEntry, type MatchResult, type ScoreBreakdown, type TeamId } from '../types'
+import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type KnockoutRound, type LeaderboardEntry, type MatchResult, type ScoreBreakdown, type TeamId } from '../types'
 import { buildResolvedBracket, getChampion } from './bracket'
 
 const GROUP_ADVANCER_POINTS = 2
@@ -19,7 +19,6 @@ export const scoreSubmission = (
 ): ScoreBreakdown => {
   let groupAdvancement = 0
   let groupPlacement = 0
-  let knockout = 0
   const matchResultsById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
 
   for (const group of GROUP_IDS) {
@@ -51,11 +50,9 @@ export const scoreSubmission = (
     if (predictedOrder[2] === actualOrder[2]) groupPlacement += GROUP_THIRD_POINTS
   }
 
-  for (const match of knockoutMatches) {
-    const actualWinner = getActualKnockoutWinner(match.id, actualResults, matchResultsById)
-    if (!actualWinner) continue
-    if (submission.knockoutWinners[match.id] === actualWinner) knockout += match.points
-  }
+  const predictedTeamsByRound = buildPredictedTeamsByRound(submission)
+  const actualTeamsByRound = buildActualTeamsByRound(actualResults, matchResultsById)
+  const knockout = scoreStageTeams(predictedTeamsByRound, actualTeamsByRound)
 
   const total = groupAdvancement + groupPlacement + knockout
 
@@ -64,12 +61,13 @@ export const scoreSubmission = (
     groupPlacement,
     knockout,
     total,
-    possible: estimatePossible(submission, total, actualResults, matchResultsById),
+    possible: estimatePossible(submission, groupAdvancement + groupPlacement, total, actualResults, matchResultsById),
   }
 }
 
 const estimatePossible = (
   submission: BracketSubmission,
+  currentGroupScore: number,
   currentScore: number,
   actualResults: ActualResults,
   matchResultsById: Map<string, MatchResult>,
@@ -93,16 +91,67 @@ const estimatePossible = (
     return Math.max(currentScore, currentScore + unresolvedPoints)
   }
 
-  const possibleTeamsByMatch = buildPossibleTeamsByMatch(actualResults, matchResultsById)
-  const remainingKnockoutPoints = knockoutMatches.reduce((sum, match) => {
-    if (getActualKnockoutWinner(match.id, actualResults, matchResultsById)) return sum
+  const predictedTeamsByRound = buildPredictedTeamsByRound(submission)
+  const maxKnockoutPoints = computeMaxKnockoutScore(predictedTeamsByRound, actualResults, matchResultsById)
 
+  return Math.max(currentScore, currentGroupScore + unresolvedGroupPoints + maxKnockoutPoints)
+}
+
+const addRoundTeam = (
+  teamsByRound: Map<KnockoutRound, Set<TeamId>>,
+  round: KnockoutRound,
+  teamId: TeamId,
+) => {
+  const teams = teamsByRound.get(round) ?? new Set<TeamId>()
+  teams.add(teamId)
+  teamsByRound.set(round, teams)
+}
+
+const buildPredictedTeamsByRound = (submission: BracketSubmission) => {
+  const teamsByRound = new Map<KnockoutRound, Set<TeamId>>()
+
+  for (const match of knockoutMatches) {
     const pickedWinner = submission.knockoutWinners[match.id]
-    const possibleTeams = possibleTeamsByMatch.get(match.id)
-    return pickedWinner && possibleTeams?.has(pickedWinner) ? sum + match.points : sum
-  }, 0)
+    if (pickedWinner) addRoundTeam(teamsByRound, match.round, pickedWinner)
+  }
 
-  return Math.max(currentScore, currentScore + unresolvedGroupPoints + remainingKnockoutPoints)
+  return teamsByRound
+}
+
+const buildActualTeamsByRound = (
+  actualResults: ActualResults,
+  matchResultsById: Map<string, MatchResult>,
+) => {
+  const teamsByRound = new Map<KnockoutRound, Set<TeamId>>()
+
+  for (const match of knockoutMatches) {
+    const actualWinner = getActualKnockoutWinner(match.id, actualResults, matchResultsById)
+    if (actualWinner) addRoundTeam(teamsByRound, match.round, actualWinner)
+  }
+
+  return teamsByRound
+}
+
+const getRoundPointValue = (round: KnockoutRound) =>
+  knockoutMatches.find((match) => match.round === round)?.points ?? 0
+
+const scoreStageTeams = (
+  predictedTeamsByRound: Map<KnockoutRound, Set<TeamId>>,
+  actualTeamsByRound: Map<KnockoutRound, Set<TeamId>>,
+) => {
+  let score = 0
+
+  for (const [round, predictedTeams] of predictedTeamsByRound) {
+    const actualTeams = actualTeamsByRound.get(round)
+    if (!actualTeams) continue
+
+    const points = getRoundPointValue(round)
+    predictedTeams.forEach((teamId) => {
+      if (actualTeams.has(teamId)) score += points
+    })
+  }
+
+  return score
 }
 
 const countKnownRoundOf32TeamSlots = (matchResultsById: Map<string, MatchResult>) =>
@@ -156,6 +205,76 @@ const buildPossibleTeamsByMatch = (
   }
 
   return possibleTeamsByMatch
+}
+
+const updateBestOutcome = (outcomes: Map<TeamId, number>, teamId: TeamId, score: number) => {
+  const previous = outcomes.get(teamId)
+  if (previous === undefined || score > previous) outcomes.set(teamId, score)
+}
+
+const getStageScore = (
+  predictedTeamsByRound: Map<KnockoutRound, Set<TeamId>>,
+  round: KnockoutRound,
+  teamId: TeamId,
+) => (predictedTeamsByRound.get(round)?.has(teamId) ? getRoundPointValue(round) : 0)
+
+const computeMaxKnockoutScore = (
+  predictedTeamsByRound: Map<KnockoutRound, Set<TeamId>>,
+  actualResults: ActualResults,
+  matchResultsById: Map<string, MatchResult>,
+) => {
+  const possibleTeamsByMatch = buildPossibleTeamsByMatch(actualResults, matchResultsById)
+  const bestOutcomesByMatch = new Map<string, Map<TeamId, number>>()
+
+  for (const match of knockoutMatches) {
+    const actualWinner = getActualKnockoutWinner(match.id, actualResults, matchResultsById)
+    const bestOutcomes = new Map<TeamId, number>()
+
+    if (actualWinner) {
+      bestOutcomes.set(actualWinner, getStageScore(predictedTeamsByRound, match.round, actualWinner))
+      bestOutcomesByMatch.set(match.id, bestOutcomes)
+      continue
+    }
+
+    if (match.round === 'round32') {
+      const possibleTeams = possibleTeamsByMatch.get(match.id) ?? new Set<TeamId>()
+      possibleTeams.forEach((teamId) => {
+        bestOutcomes.set(teamId, getStageScore(predictedTeamsByRound, match.round, teamId))
+      })
+      bestOutcomesByMatch.set(match.id, bestOutcomes)
+      continue
+    }
+
+    const sourceMatches = match.slots
+      .filter((slot): slot is Extract<(typeof match.slots)[number], { type: 'matchWinner' }> => slot.type === 'matchWinner')
+      .map((slot) => bestOutcomesByMatch.get(slot.matchId) ?? new Map<TeamId, number>())
+
+    const [leftOutcomes, rightOutcomes] = sourceMatches
+    if (!leftOutcomes || !rightOutcomes) {
+      bestOutcomesByMatch.set(match.id, bestOutcomes)
+      continue
+    }
+
+    leftOutcomes.forEach((leftScore, leftTeamId) => {
+      rightOutcomes.forEach((rightScore, rightTeamId) => {
+        const baseScore = leftScore + rightScore
+        updateBestOutcome(
+          bestOutcomes,
+          leftTeamId,
+          baseScore + getStageScore(predictedTeamsByRound, match.round, leftTeamId),
+        )
+        updateBestOutcome(
+          bestOutcomes,
+          rightTeamId,
+          baseScore + getStageScore(predictedTeamsByRound, match.round, rightTeamId),
+        )
+      })
+    })
+
+    bestOutcomesByMatch.set(match.id, bestOutcomes)
+  }
+
+  return Math.max(0, ...Array.from(bestOutcomesByMatch.get('M104')?.values() ?? []))
 }
 
 const buildActualPicks = (actualResults: ActualResults): BracketPicks => {
