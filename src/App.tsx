@@ -311,7 +311,7 @@ function App() {
       })
       .sort((a, b) => a.localeCompare(b))
   }, [liveSubmissions, selectedRoomSlug])
-  const leaderboard = buildLeaderboard(visibleSubmissions, scoringResults)
+  const leaderboard = buildLeaderboard(visibleSubmissions, scoringResults, liveMatchResults)
   const currentSubmission = useMemo(() => {
     if (!roomSession || !selectedRoomSlug) return null
 
@@ -2329,7 +2329,7 @@ function LeaderboardPanel({
 
       {selectedSubmission ? (
         <aside className="detail-rail">
-          <BracketSummary actualResults={scoringResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
+          <BracketSummary actualResults={scoringResults} matchResults={matchResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
           <div className="detail-review-stack">
             <ReviewBracket actualResults={scoringResults} picks={selectedSubmission} />
             <ReviewGroups actualResults={scoringResults} picks={selectedSubmission} />
@@ -2354,15 +2354,17 @@ function ChampionFlag({ teamId }: { teamId: TeamId }) {
 
 function BracketSummary({
   actualResults,
+  matchResults,
   submission,
   onClose,
 }: {
   actualResults: ActualResults
+  matchResults: MatchResult[]
   submission: BracketSubmission
   onClose: () => void
 }) {
   const champion = getChampion(submission)
-  const score = scoreSubmission(submission, actualResults)
+  const score = scoreSubmission(submission, actualResults, matchResults)
 
   return (
     <section className="panel bracket-summary">
