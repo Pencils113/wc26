@@ -51,7 +51,7 @@ import {
   upsertLocalSubmission,
 } from './lib/storage'
 import { hasSupabaseConfig } from './lib/supabaseClient'
-import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type MatchResult, type ResolvedMatch, type Room, type TeamId } from './types'
+import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type KnockoutRound, type MatchResult, type ResolvedMatch, type Room, type TeamId } from './types'
 
 type AppStep = 'gate' | 'name' | 'rulesIntro' | 'build' | 'leaderboard'
 
@@ -1166,6 +1166,7 @@ function KnockoutReviewGrid({
   picks: BracketPicks
 }) {
   const matches = resolvedMatches ?? buildResolvedBracket(picks)
+  const reviewContext = useMemo(() => buildKnockoutReviewContext(actualResults), [actualResults])
 
   return (
     <div className="review-bracket-grid">
@@ -1175,7 +1176,6 @@ function KnockoutReviewGrid({
           .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
           .map((match) => {
             const layout = knockoutLayout[match.id]
-            const actualWinner = actualResults.knockoutWinners[match.id]
 
             return (
               <article
@@ -1188,11 +1188,12 @@ function KnockoutReviewGrid({
               >
                 <span className="review-match-meta">
                   <span>{match.id}</span>
-                  {actualWinner && <strong>{teamsById[actualWinner]?.code}</strong>}
                 </span>
                 {match.teams.map((teamId, slotIndex) => {
                   const selected = Boolean(teamId && match.selectedWinner === teamId)
-                  const result = mode === 'submission' ? getKnockoutPickResult(teamId, match.selectedWinner, match.points, actualWinner) : null
+                  const result = mode === 'submission'
+                    ? getKnockoutPickResult(teamId, match.selectedWinner, match.round, match.points, reviewContext)
+                    : null
                   const resultClass = result ? ` result-${result.status}` : ''
                   const pointValue = result && 'points' in result ? result.points ?? 0 : 0
 
@@ -1217,11 +1218,104 @@ function KnockoutReviewGrid({
   )
 }
 
-function getKnockoutPickResult(teamId: TeamId | null, selectedWinner: TeamId | null, points: number, actualWinner?: TeamId) {
-  if (!teamId || !actualWinner || !selectedWinner) return null
-  if (selectedWinner === teamId && actualWinner === teamId) return { status: 'correct', label: 'Pick', points }
-  if (selectedWinner === teamId && actualWinner !== teamId) return { status: 'wrong', label: 'Pick' }
-  if (actualWinner === teamId) return { status: 'actual', label: 'Actual' }
+const KNOCKOUT_ROUND_RANK: Record<KnockoutRound, number> = {
+  round32: 1,
+  round16: 2,
+  quarterfinal: 3,
+  semifinal: 4,
+  final: 5,
+}
+
+interface KnockoutReviewContext {
+  completedRounds: Set<KnockoutRound>
+  eliminatedRoundRankByTeam: Map<TeamId, number>
+  seeded: boolean
+  seededTeamIds: Set<TeamId>
+  winnersByRound: Map<KnockoutRound, Set<TeamId>>
+}
+
+function addTeamToRound(map: Map<KnockoutRound, Set<TeamId>>, round: KnockoutRound, teamId: TeamId) {
+  const teams = map.get(round) ?? new Set<TeamId>()
+  teams.add(teamId)
+  map.set(round, teams)
+}
+
+function buildKnockoutReviewContext(actualResults: ActualResults): KnockoutReviewContext {
+  const actualMatches = buildResolvedBracket(buildActualPicks(actualResults))
+  const completedCountByRound = new Map<KnockoutRound, number>()
+  const totalCountByRound = new Map<KnockoutRound, number>()
+  const eliminatedRoundRankByTeam = new Map<TeamId, number>()
+  const seededTeamIds = new Set<TeamId>()
+  const winnersByRound = new Map<KnockoutRound, Set<TeamId>>()
+
+  for (const group of GROUP_IDS) {
+    const actualOrder = actualResults.groupOrder[group]
+    if (!actualOrder || actualOrder.length < 4) continue
+
+    if (actualOrder[0]) seededTeamIds.add(actualOrder[0])
+    if (actualOrder[1]) seededTeamIds.add(actualOrder[1])
+    if (actualResults.thirdPlaceAdvancers.includes(group) && actualOrder[2]) {
+      seededTeamIds.add(actualOrder[2])
+    }
+  }
+
+  for (const match of actualMatches) {
+    totalCountByRound.set(match.round, (totalCountByRound.get(match.round) ?? 0) + 1)
+
+    const winner = actualResults.knockoutWinners[match.id]
+    if (!winner) continue
+
+    completedCountByRound.set(match.round, (completedCountByRound.get(match.round) ?? 0) + 1)
+    addTeamToRound(winnersByRound, match.round, winner)
+
+    for (const teamId of match.teams) {
+      if (!teamId || teamId === winner) continue
+      eliminatedRoundRankByTeam.set(teamId, KNOCKOUT_ROUND_RANK[match.round])
+    }
+  }
+
+  const completedRounds = new Set(
+    KNOCKOUT_ROUND_ORDER.filter((round) =>
+      (totalCountByRound.get(round) ?? 0) > 0 &&
+      (completedCountByRound.get(round) ?? 0) === totalCountByRound.get(round),
+    ),
+  )
+
+  return {
+    completedRounds,
+    eliminatedRoundRankByTeam,
+    seeded: seededTeamIds.size >= 32,
+    seededTeamIds,
+    winnersByRound,
+  }
+}
+
+function getKnockoutPickResult(
+  teamId: TeamId | null,
+  selectedWinner: TeamId | null,
+  round: KnockoutRound,
+  points: number,
+  reviewContext: KnockoutReviewContext,
+) {
+  if (!teamId || selectedWinner !== teamId) return null
+
+  if (reviewContext.winnersByRound.get(round)?.has(teamId)) {
+    return { status: 'correct', label: 'Hit', points }
+  }
+
+  if (reviewContext.seeded && !reviewContext.seededTeamIds.has(teamId)) {
+    return { status: 'wrong', label: 'Out' }
+  }
+
+  const eliminatedRoundRank = reviewContext.eliminatedRoundRankByTeam.get(teamId)
+  if (eliminatedRoundRank && eliminatedRoundRank <= KNOCKOUT_ROUND_RANK[round]) {
+    return { status: 'wrong', label: 'Out' }
+  }
+
+  if (reviewContext.completedRounds.has(round)) {
+    return { status: 'wrong', label: 'Miss' }
+  }
+
   return null
 }
 
