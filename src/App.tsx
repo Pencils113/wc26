@@ -1176,6 +1176,7 @@ function KnockoutReviewGrid({
 }) {
   const matches = resolvedMatches ?? buildResolvedBracket(picks)
   const reviewContext = useMemo(() => buildKnockoutReviewContext(actualResults, matchResults), [actualResults, matchResults])
+  const matchResultsById = useMemo(() => new Map(matchResults.map((matchResult) => [matchResult.id, matchResult])), [matchResults])
 
   return (
     <div className="review-bracket-grid">
@@ -1185,6 +1186,7 @@ function KnockoutReviewGrid({
           .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
           .map((match) => {
             const layout = knockoutLayout[match.id]
+            const scoreLabel = formatMatchResultScore(matchResultsById.get(match.id))
 
             return (
               <article
@@ -1197,6 +1199,7 @@ function KnockoutReviewGrid({
               >
                 <span className="review-match-meta">
                   <span>{match.id}</span>
+                  {scoreLabel && <strong>{scoreLabel}</strong>}
                 </span>
                 {match.teams.map((teamId, slotIndex) => {
                   const selected = Boolean(teamId && match.selectedWinner === teamId)
@@ -2104,6 +2107,7 @@ function OfficialResultsPanel({
           <CurrentKnockoutProjection
             isFinal={groupStageResolved}
             knownSlots={roundOf32KnownSlots}
+            matchResults={matchResults}
             matches={roundOf32KnownSlots > 0 ? officialKnockoutMatches : undefined}
             picks={currentKnockoutPicks}
           />
@@ -2216,11 +2220,13 @@ function getThirdPlaceAdvancersFromRoundOf32(
 function CurrentKnockoutProjection({
   isFinal,
   knownSlots,
+  matchResults,
   matches,
   picks,
 }: {
   isFinal: boolean
   knownSlots: number
+  matchResults: MatchResult[]
   matches?: ResolvedMatch[]
   picks: BracketPicks
 }) {
@@ -2234,7 +2240,7 @@ function CurrentKnockoutProjection({
         <span>{isFinal ? 'Round of 32 set' : knownSlots > 0 ? `${knownSlots}/32 slots known` : 'Round of 32 seeded'}</span>
       </div>
       <div className="current-knockout-scroll">
-        <KnockoutReviewGrid matches={matches} mode="official" picks={picks} />
+        <KnockoutReviewGrid matchResults={matchResults} matches={matches} mode="official" picks={picks} />
       </div>
     </section>
   )
@@ -2332,6 +2338,8 @@ function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: Act
         {fixtures.map((fixture, index) => {
           const previousStatus = fixtures[index - 1]?.status
           const showStatusDivider = index === 0 || previousStatus !== fixture.status
+          const penaltyFixture = isPenaltyFixture(fixture)
+          const scoreLabel = formatFixtureScore(fixture)
           const statusLabel = fixture.status === 'completed'
             ? 'Completed'
             : fixture.status === 'live'
@@ -2343,7 +2351,9 @@ function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: Act
               ? `${liveCount} live`
               : `${upcomingCount} to play`
           const timeLabel = fixture.status === 'completed'
-            ? 'FT'
+            ? penaltyFixture
+              ? 'FT-Pens'
+              : 'FT'
             : fixture.status === 'live'
               ? fixture.displayClock && fixture.displayClock !== "0'"
                 ? fixture.displayClock
@@ -2365,8 +2375,8 @@ function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: Act
                 </div>
                 <div className="schedule-teams">
                   <ScheduleTeamIdentity team={fixture.teams[0]} winner={fixture.status === 'completed' && fixture.teams[0].teamId === fixture.winnerId} />
-                  <small className={fixture.score ? 'schedule-score' : ''}>
-                    {fixture.score ? `${fixture.score[0]}-${fixture.score[1]}` : 'vs'}
+                  <small className={scoreLabel ? `schedule-score${penaltyFixture ? ' penalty-score' : ''}` : ''}>
+                    {scoreLabel ?? 'vs'}
                   </small>
                   <ScheduleTeamIdentity team={fixture.teams[1]} winner={fixture.status === 'completed' && fixture.teams[1].teamId === fixture.winnerId} />
                 </div>
@@ -2391,6 +2401,30 @@ function ScheduleTeamIdentity({ team, winner = false }: { team: ScheduleTeam; wi
   ) : (
     <span className={winner ? 'schedule-team winner schedule-placeholder' : 'schedule-team schedule-placeholder'}>{team.label}</span>
   )
+}
+
+function isPenaltyStatus(statusDetail: string | undefined) {
+  return statusDetail?.toLowerCase().includes('pen') ?? false
+}
+
+function formatScoreLabel(homeScore: number | null | undefined, awayScore: number | null | undefined, statusDetail: string | undefined) {
+  if (typeof homeScore !== 'number' || typeof awayScore !== 'number') return null
+
+  const score = `${homeScore}-${awayScore}`
+  return isPenaltyStatus(statusDetail) ? `${score} pens` : score
+}
+
+function formatMatchResultScore(matchResult: MatchResult | undefined) {
+  return formatScoreLabel(matchResult?.homeScore, matchResult?.awayScore, matchResult?.statusDetail)
+}
+
+function isPenaltyFixture(fixture: ScheduleFixture) {
+  return isPenaltyStatus(fixture.statusDetail)
+}
+
+function formatFixtureScore(fixture: ScheduleFixture) {
+  if (!fixture.score) return null
+  return formatScoreLabel(fixture.score[0], fixture.score[1], fixture.statusDetail)
 }
 
 function LeaderboardPanel({

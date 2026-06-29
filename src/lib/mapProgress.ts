@@ -50,6 +50,14 @@ const roundStage: Record<KnockoutRound, MapStage> = {
   final: 'finalist',
 }
 
+const winnerStage: Record<KnockoutRound, MapStage> = {
+  round32: 'round16',
+  round16: 'quarterfinal',
+  quarterfinal: 'semifinal',
+  semifinal: 'finalist',
+  final: 'champion',
+}
+
 const baseStages = (): TeamMapStages =>
   Object.fromEntries(teams.map((team) => [team.id, 'field'])) as TeamMapStages
 
@@ -73,7 +81,7 @@ export const getPredictionTeamMapStages = (picks: BracketPicks): TeamMapStages =
   return stages
 }
 
-const getLiveKnockoutWinners = (matchResults: MatchResult[]) => {
+const getKnockoutWinnersFromMatchResults = (matchResults: MatchResult[]) => {
   const matchResultsById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
 
   return Object.fromEntries(
@@ -85,29 +93,30 @@ const getLiveKnockoutWinners = (matchResults: MatchResult[]) => {
 }
 
 export const getActualTeamMapStages = (actualResults: ActualResults, matchResults: MatchResult[] = []): TeamMapStages => {
-  const groupOrder = GROUP_IDS.reduce(
-    (order, group) => {
-      const actualOrder = actualResults.groupOrder[group] ?? []
-      order[group] = [
-        actualOrder[0] ?? null,
-        actualOrder[1] ?? null,
-        actualOrder[2] ?? null,
-        actualOrder[3] ?? null,
-      ]
-      return order
-    },
-    {} as BracketPicks['groupOrder'],
-  )
-  const liveKnockoutWinners = getLiveKnockoutWinners(matchResults)
+  const stages = baseStages()
+  const matchResultsById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
+  const knockoutWinners = {
+    ...actualResults.knockoutWinners,
+    ...getKnockoutWinnersFromMatchResults(matchResults),
+  }
 
-  return getPredictionTeamMapStages({
-    groupOrder,
-    thirdPlaceAdvancers: actualResults.thirdPlaceAdvancers,
-    knockoutWinners: {
-      ...actualResults.knockoutWinners,
-      ...liveKnockoutWinners,
-    },
-  })
+  for (const group of GROUP_IDS) {
+    const actualOrder = actualResults.groupOrder[group] ?? []
+    promote(stages, actualOrder[0] ?? null, 'round32')
+    promote(stages, actualOrder[1] ?? null, 'round32')
+    if (actualResults.thirdPlaceAdvancers.includes(group)) {
+      promote(stages, actualOrder[2] ?? null, 'round32')
+    }
+  }
+
+  for (const match of knockoutMatches) {
+    const matchResult = matchResultsById.get(match.id)
+    promote(stages, matchResult?.homeTeamId ?? null, roundStage[match.round])
+    promote(stages, matchResult?.awayTeamId ?? null, roundStage[match.round])
+    promote(stages, knockoutWinners[match.id] ?? null, winnerStage[match.round])
+  }
+
+  return stages
 }
 
 export const getBestMapStage = (stages: MapStage[]) =>

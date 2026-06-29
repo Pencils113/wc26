@@ -1267,6 +1267,7 @@
 .review-match-meta strong {
   color: var(--accent);
   font-size: 9px;
+  white-space: nowrap;
 }
 
 .review-pick {
@@ -1945,6 +1946,11 @@
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.045);
+}
+
+.schedule-row.completed .schedule-score.penalty-score {
+  min-width: 64px;
+  white-space: nowrap;
 }
 
 .schedule-row.live .schedule-score {
