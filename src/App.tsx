@@ -2419,7 +2419,7 @@ function LeaderboardPanel({
     () => selectedSubmission ? normalizeBracketPicks(selectedSubmission) : null,
     [selectedSubmission],
   )
-  const actualMapStages = useMemo(() => getActualTeamMapStages(scoringResults), [scoringResults])
+  const actualMapStages = useMemo(() => getActualTeamMapStages(scoringResults, matchResults), [scoringResults, matchResults])
   const isProvisional = provisionalGroupCount > 0
   const resultsMapNote = isProvisional
     ? 'Live group table feeding scores'

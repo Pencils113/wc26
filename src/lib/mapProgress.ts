@@ -1,5 +1,6 @@
 import { teams } from '../data/teams'
-import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type KnockoutRound, type TeamId } from '../types'
+import { knockoutMatches } from '../data/bracket'
+import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type KnockoutRound, type MatchResult, type TeamId } from '../types'
 import { buildResolvedBracket, getStoredChampion } from './bracket'
 
 export type MapStage =
@@ -72,7 +73,18 @@ export const getPredictionTeamMapStages = (picks: BracketPicks): TeamMapStages =
   return stages
 }
 
-export const getActualTeamMapStages = (actualResults: ActualResults): TeamMapStages => {
+const getLiveKnockoutWinners = (matchResults: MatchResult[]) => {
+  const matchResultsById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
+
+  return Object.fromEntries(
+    knockoutMatches.flatMap((match) => {
+      const winner = matchResultsById.get(match.id)?.winnerTeamId
+      return winner ? [[match.id, winner]] : []
+    }),
+  ) as BracketPicks['knockoutWinners']
+}
+
+export const getActualTeamMapStages = (actualResults: ActualResults, matchResults: MatchResult[] = []): TeamMapStages => {
   const groupOrder = GROUP_IDS.reduce(
     (order, group) => {
       const actualOrder = actualResults.groupOrder[group] ?? []
@@ -86,11 +98,15 @@ export const getActualTeamMapStages = (actualResults: ActualResults): TeamMapSta
     },
     {} as BracketPicks['groupOrder'],
   )
+  const liveKnockoutWinners = getLiveKnockoutWinners(matchResults)
 
   return getPredictionTeamMapStages({
     groupOrder,
     thirdPlaceAdvancers: actualResults.thirdPlaceAdvancers,
-    knockoutWinners: actualResults.knockoutWinners,
+    knockoutWinners: {
+      ...actualResults.knockoutWinners,
+      ...liveKnockoutWinners,
+    },
   })
 }
 
