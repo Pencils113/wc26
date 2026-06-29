@@ -570,6 +570,7 @@ function App() {
           champion={champion}
           filledGroupSlots={filledGroupSlots}
           groupStageComplete={groupStageComplete}
+          matchResults={liveMatchResults}
           picks={picks}
           readOnly={Boolean(currentSubmission)}
           setPicks={setPicks}
@@ -847,6 +848,7 @@ function BuildScreen({
   champion,
   filledGroupSlots,
   groupStageComplete,
+  matchResults,
   picks,
   readOnly,
   setPicks,
@@ -860,6 +862,7 @@ function BuildScreen({
   champion: TeamId | null
   filledGroupSlots: number
   groupStageComplete: boolean
+  matchResults: MatchResult[]
   picks: BracketPicks
   readOnly: boolean
   setPicks: Dispatch<SetStateAction<BracketPicks>>
@@ -872,7 +875,7 @@ function BuildScreen({
   const knockoutProgress = useMemo(() => getKnockoutPickProgress(picks), [picks])
 
   if (readOnly) {
-    return <SubmittedBuildScreen actualResults={actualResults} champion={champion} filledGroupSlots={filledGroupSlots} picks={picks} />
+    return <SubmittedBuildScreen actualResults={actualResults} champion={champion} filledGroupSlots={filledGroupSlots} matchResults={matchResults} picks={picks} />
   }
 
   return (
@@ -958,11 +961,13 @@ function SubmittedBuildScreen({
   actualResults,
   champion,
   filledGroupSlots,
+  matchResults,
   picks,
 }: {
   actualResults: ActualResults
   champion: TeamId | null
   filledGroupSlots: number
+  matchResults: MatchResult[]
   picks: BracketPicks
 }) {
   const mapStages = useMemo(() => getPredictionTeamMapStages(picks), [picks])
@@ -997,7 +1002,7 @@ function SubmittedBuildScreen({
       <div className="review-main">
         <WorldCupMap compact kicker="Map" stages={mapStages} title="Your predictions" />
         <ReviewGroups actualResults={actualResults} picks={picks} />
-        <ReviewBracket actualResults={actualResults} picks={picks} />
+        <ReviewBracket actualResults={actualResults} matchResults={matchResults} picks={picks} />
       </div>
     </div>
   )
@@ -1139,34 +1144,38 @@ function getGroupScore(actualResults: ActualResults, picks: BracketPicks, group:
 
 function ReviewBracket({
   actualResults = emptyActualResults,
+  matchResults = [],
   mode = 'submission',
   picks,
 }: {
   actualResults?: ActualResults
+  matchResults?: MatchResult[]
   mode?: 'submission' | 'official'
   picks: BracketPicks
 }) {
   return (
     <section className="section-block review-section">
       <SectionHead kicker="02" title="Knockout" />
-      <KnockoutReviewGrid actualResults={actualResults} mode={mode} picks={picks} />
+      <KnockoutReviewGrid actualResults={actualResults} matchResults={matchResults} mode={mode} picks={picks} />
     </section>
   )
 }
 
 function KnockoutReviewGrid({
   actualResults = emptyActualResults,
+  matchResults = [],
   matches: resolvedMatches,
   mode = 'submission',
   picks,
 }: {
   actualResults?: ActualResults
+  matchResults?: MatchResult[]
   matches?: ResolvedMatch[]
   mode?: 'submission' | 'official'
   picks: BracketPicks
 }) {
   const matches = resolvedMatches ?? buildResolvedBracket(picks)
-  const reviewContext = useMemo(() => buildKnockoutReviewContext(actualResults), [actualResults])
+  const reviewContext = useMemo(() => buildKnockoutReviewContext(actualResults, matchResults), [actualResults, matchResults])
 
   return (
     <div className="review-bracket-grid">
@@ -1195,7 +1204,7 @@ function KnockoutReviewGrid({
                     ? getKnockoutPickResult(teamId, match.selectedWinner, match.round, match.points, reviewContext)
                     : null
                   const resultClass = result ? ` result-${result.status}` : ''
-                  const pointValue = result && 'points' in result ? result.points ?? 0 : 0
+                  const pointLabels = result?.pointLabels ?? []
 
                   return (
                     <div className={`review-pick${selected ? ' selected' : ''}${resultClass ? ` ${resultClass}` : ''}`} key={`${match.id}-${slotIndex}`}>
@@ -1204,7 +1213,15 @@ function KnockoutReviewGrid({
                         <span className={result.status === 'wrong' ? 'review-result-pill wrong' : 'review-result-pill correct'}>
                           {result.status === 'wrong' ? <X size={12} /> : <Check size={12} />}
                           <small>{result.label}</small>
-                          {pointValue > 0 && <b className="point-chip">+{pointValue}</b>}
+                          {pointLabels.length > 0 && (
+                            <span className="point-chip-row">
+                              {pointLabels.map((label, pointIndex) => (
+                                <b className="point-chip" key={`${label}-${pointIndex}`}>
+                                  {label}
+                                </b>
+                              ))}
+                            </span>
+                          )}
                         </span>
                       )}
                     </div>
@@ -1226,12 +1243,28 @@ const KNOCKOUT_ROUND_RANK: Record<KnockoutRound, number> = {
   final: 5,
 }
 
+const KNOCKOUT_APPEARANCE_POINTS: Record<KnockoutRound, number> = {
+  round32: 0,
+  round16: 4,
+  quarterfinal: 8,
+  semifinal: 16,
+  final: 32,
+}
+
+const NEXT_APPEARANCE_ROUND: Partial<Record<KnockoutRound, KnockoutRound>> = {
+  round32: 'round16',
+  round16: 'quarterfinal',
+  quarterfinal: 'semifinal',
+  semifinal: 'final',
+}
+
 interface KnockoutReviewContext {
-  completedRounds: Set<KnockoutRound>
+  actualChampion: TeamId | null
+  actualTeamsByAppearanceRound: Map<KnockoutRound, Set<TeamId>>
+  completedAppearanceRounds: Set<KnockoutRound>
   eliminatedRoundRankByTeam: Map<TeamId, number>
   seeded: boolean
   seededTeamIds: Set<TeamId>
-  winnersByRound: Map<KnockoutRound, Set<TeamId>>
 }
 
 function addTeamToRound(map: Map<KnockoutRound, Set<TeamId>>, round: KnockoutRound, teamId: TeamId) {
@@ -1240,13 +1273,22 @@ function addTeamToRound(map: Map<KnockoutRound, Set<TeamId>>, round: KnockoutRou
   map.set(round, teams)
 }
 
-function buildKnockoutReviewContext(actualResults: ActualResults): KnockoutReviewContext {
-  const actualMatches = buildResolvedBracket(buildActualPicks(actualResults))
+function getActualKnockoutWinner(
+  matchId: string,
+  actualResults: ActualResults,
+  matchResultsById: Map<string, MatchResult>,
+) {
+  return actualResults.knockoutWinners[matchId] ?? matchResultsById.get(matchId)?.winnerTeamId ?? null
+}
+
+function buildKnockoutReviewContext(actualResults: ActualResults, matchResults: MatchResult[]): KnockoutReviewContext {
+  const matchResultsById = new Map(matchResults.map((matchResult) => [matchResult.id, matchResult]))
+  const actualMatches = buildKnockoutMatchesFromMatchResults(buildActualPicks(actualResults), matchResults)
   const completedCountByRound = new Map<KnockoutRound, number>()
   const totalCountByRound = new Map<KnockoutRound, number>()
+  const actualTeamsByAppearanceRound = new Map<KnockoutRound, Set<TeamId>>()
   const eliminatedRoundRankByTeam = new Map<TeamId, number>()
   const seededTeamIds = new Set<TeamId>()
-  const winnersByRound = new Map<KnockoutRound, Set<TeamId>>()
 
   for (const group of GROUP_IDS) {
     const actualOrder = actualResults.groupOrder[group]
@@ -1259,14 +1301,31 @@ function buildKnockoutReviewContext(actualResults: ActualResults): KnockoutRevie
     }
   }
 
+  for (const match of actualMatches.filter((match) => match.round === 'round32')) {
+    for (const teamId of match.teams) {
+      if (teamId) seededTeamIds.add(teamId)
+    }
+  }
+
+  seededTeamIds.forEach((teamId) => addTeamToRound(actualTeamsByAppearanceRound, 'round32', teamId))
+
+  const seeded = seededTeamIds.size >= 32
+  if (seeded) {
+    Object.keys(teamsById).forEach((teamId) => {
+      if (!seededTeamIds.has(teamId)) eliminatedRoundRankByTeam.set(teamId, 0)
+    })
+  }
+
   for (const match of actualMatches) {
     totalCountByRound.set(match.round, (totalCountByRound.get(match.round) ?? 0) + 1)
 
-    const winner = actualResults.knockoutWinners[match.id]
+    const winner = getActualKnockoutWinner(match.id, actualResults, matchResultsById)
     if (!winner) continue
 
     completedCountByRound.set(match.round, (completedCountByRound.get(match.round) ?? 0) + 1)
-    addTeamToRound(winnersByRound, match.round, winner)
+
+    const nextRound = NEXT_APPEARANCE_ROUND[match.round]
+    if (nextRound) addTeamToRound(actualTeamsByAppearanceRound, nextRound, winner)
 
     for (const teamId of match.teams) {
       if (!teamId || teamId === winner) continue
@@ -1274,19 +1333,26 @@ function buildKnockoutReviewContext(actualResults: ActualResults): KnockoutRevie
     }
   }
 
-  const completedRounds = new Set(
-    KNOCKOUT_ROUND_ORDER.filter((round) =>
-      (totalCountByRound.get(round) ?? 0) > 0 &&
-      (completedCountByRound.get(round) ?? 0) === totalCountByRound.get(round),
-    ),
-  )
+  const completedAppearanceRounds = new Set<KnockoutRound>()
+  if (seeded) completedAppearanceRounds.add('round32')
+
+  KNOCKOUT_ROUND_ORDER.forEach((round) => {
+    const nextRound = NEXT_APPEARANCE_ROUND[round]
+    if (!nextRound) return
+    if ((totalCountByRound.get(round) ?? 0) > 0 && (completedCountByRound.get(round) ?? 0) === totalCountByRound.get(round)) {
+      completedAppearanceRounds.add(nextRound)
+    }
+  })
+
+  const actualChampion = getActualKnockoutWinner('M104', actualResults, matchResultsById)
 
   return {
-    completedRounds,
+    actualChampion,
+    actualTeamsByAppearanceRound,
+    completedAppearanceRounds,
     eliminatedRoundRankByTeam,
-    seeded: seededTeamIds.size >= 32,
+    seeded,
     seededTeamIds,
-    winnersByRound,
   }
 }
 
@@ -1294,26 +1360,37 @@ function getKnockoutPickResult(
   teamId: TeamId | null,
   selectedWinner: TeamId | null,
   round: KnockoutRound,
-  points: number,
+  _points: number,
   reviewContext: KnockoutReviewContext,
 ) {
-  if (!teamId || selectedWinner !== teamId) return null
+  if (!teamId) return null
 
-  if (reviewContext.winnersByRound.get(round)?.has(teamId)) {
-    return { status: 'correct', label: 'Hit', points }
+  if (reviewContext.actualTeamsByAppearanceRound.get(round)?.has(teamId)) {
+    const pointLabels = []
+    const appearancePoints = KNOCKOUT_APPEARANCE_POINTS[round]
+    if (appearancePoints > 0) pointLabels.push(`+${appearancePoints}`)
+    if (round === 'final' && selectedWinner === teamId && reviewContext.actualChampion === teamId) {
+      pointLabels.push('+64')
+    }
+
+    return {
+      status: 'correct',
+      label: round === 'round32' ? 'Qual' : 'Hit',
+      pointLabels,
+    }
   }
 
   if (reviewContext.seeded && !reviewContext.seededTeamIds.has(teamId)) {
-    return { status: 'wrong', label: 'Out' }
+    return { status: 'wrong', label: 'Out', pointLabels: [] }
   }
 
   const eliminatedRoundRank = reviewContext.eliminatedRoundRankByTeam.get(teamId)
-  if (eliminatedRoundRank && eliminatedRoundRank <= KNOCKOUT_ROUND_RANK[round]) {
-    return { status: 'wrong', label: 'Out' }
+  if (eliminatedRoundRank !== undefined && eliminatedRoundRank < KNOCKOUT_ROUND_RANK[round]) {
+    return { status: 'wrong', label: 'Out', pointLabels: [] }
   }
 
-  if (reviewContext.completedRounds.has(round)) {
-    return { status: 'wrong', label: 'Miss' }
+  if (reviewContext.completedAppearanceRounds.has(round)) {
+    return { status: 'wrong', label: 'Miss', pointLabels: [] }
   }
 
   return null
@@ -2425,7 +2502,7 @@ function LeaderboardPanel({
             <>
               <BracketSummary actualResults={scoringResults} matchResults={matchResults} onClose={() => onPreview(null)} submission={selectedSubmission} />
               <div className="detail-review-stack">
-                <ReviewBracket actualResults={scoringResults} picks={displaySubmission} />
+                <ReviewBracket actualResults={scoringResults} matchResults={matchResults} picks={displaySubmission} />
                 <ReviewGroups actualResults={scoringResults} picks={displaySubmission} />
               </div>
             </>
