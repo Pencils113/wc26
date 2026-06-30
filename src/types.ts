@@ -117,6 +117,23 @@ export interface ActualResults {
   knockoutWinners: Record<MatchId, TeamId>
 }
 
+export interface ShootoutAttempt {
+  player: string
+  shotNumber: number
+  didScore: boolean
+}
+
+export interface ShootoutTeamResult {
+  teamId: TeamId
+  score: number
+  attempts: ShootoutAttempt[]
+}
+
+export interface MatchShootout {
+  home: ShootoutTeamResult
+  away: ShootoutTeamResult
+}
+
 export interface MatchResult {
   id: MatchId
   stage: string
@@ -129,6 +146,7 @@ export interface MatchResult {
   status: string
   statusDetail?: string
   displayClock?: string
+  shootout?: MatchShootout
   updatedAt: string
 }
 

@@ -1,5 +1,5 @@
 import { emptyActualResults } from '../data/results'
-import type { ActualResults, BracketPicks, BracketSubmission, MatchResult, Room } from '../types'
+import type { ActualResults, BracketPicks, BracketSubmission, MatchResult, MatchShootout, Room } from '../types'
 import { hasSupabaseConfig, requireSupabase, supabase } from './supabaseClient'
 
 interface BracketSubmissionRow {
@@ -33,6 +33,7 @@ interface MatchResultRow {
   raw: {
     statusDetail?: string
     displayClock?: string
+    shootout?: MatchShootout
   } | null
   updated_at: string
 }
@@ -153,5 +154,6 @@ const mapMatchResultRow = (row: MatchResultRow): MatchResult => ({
   status: row.status,
   statusDetail: row.raw?.statusDetail,
   displayClock: row.raw?.displayClock,
+  shootout: row.raw?.shootout,
   updatedAt: row.updated_at,
 })

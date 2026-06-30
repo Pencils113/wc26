@@ -216,7 +216,7 @@ if (events.length < internalMatchIds.length) {
   throw new Error(`ESPN scoreboard returned too few events: ${events.length}`)
 }
 
-const rows = events.slice(0, internalMatchIds.length).map(mapEventToRow)
+const rows = await Promise.all(events.slice(0, internalMatchIds.length).map(mapEventToRow))
 
 if (dryRun) {
   console.log(`Dry run normalized ${rows.length} matches`)
@@ -239,7 +239,7 @@ await updateActualResults(rows)
 await logRun('ok', `Upserted ${rows.length} matches`)
 console.log(`Upserted ${rows.length} matches`)
 
-function mapEventToRow(event, index) {
+async function mapEventToRow(event, index) {
   const id = internalMatchIds[index]
   const competition = event.competitions?.[0] ?? {}
   const competitors = competition.competitors ?? []
@@ -255,6 +255,10 @@ function mapEventToRow(event, index) {
   const homeScore = showScore ? parseScore(home?.score) : null
   const awayScore = showScore ? parseScore(away?.score) : null
   const winner = competitors.find((competitor) => competitor.winner)
+  const statusDetail = status.type?.shortDetail ?? status.type?.description ?? null
+  const shootout = event.id && isPenaltyStatus(status.type?.name, statusDetail)
+    ? await fetchShootoutSummary(String(event.id), homeTeamId, awayTeamId)
+    : null
 
   return {
     id,
@@ -271,8 +275,9 @@ function mapEventToRow(event, index) {
     raw: {
       providerEventId: String(event.id),
       providerStatus: status.type?.name ?? null,
-      statusDetail: status.type?.shortDetail ?? status.type?.description ?? null,
+      statusDetail,
       displayClock: status.displayClock ?? null,
+      shootout,
       state,
       completed,
     },
@@ -291,9 +296,71 @@ function getTeamId(competitor) {
   return null
 }
 
+function getTeamIdFromName(teamName) {
+  return teamName && teamAliasToId[teamName] ? teamAliasToId[teamName] : null
+}
+
 function parseScore(score) {
   const value = Number(score)
   return Number.isFinite(value) ? value : null
+}
+
+function isPenaltyStatus(statusName, statusDetail) {
+  return [statusName, statusDetail].some((value) => value?.toLowerCase().includes('pen'))
+}
+
+async function fetchShootoutSummary(eventId, homeTeamId, awayTeamId) {
+  if (!homeTeamId || !awayTeamId) return null
+
+  try {
+    const summaryEndpoint = new URL('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary')
+    summaryEndpoint.searchParams.set('event', eventId)
+
+    const response = await fetch(summaryEndpoint)
+    if (!response.ok) return null
+
+    const summary = await response.json()
+    return parseShootoutSummary(summary, homeTeamId, awayTeamId)
+  } catch {
+    return null
+  }
+}
+
+function parseShootoutSummary(summary, homeTeamId, awayTeamId) {
+  const scoreByTeamId = new Map()
+  const headerCompetitors = summary.header?.competitions?.[0]?.competitors ?? []
+
+  for (const competitor of headerCompetitors) {
+    const teamId = getTeamId(competitor)
+    if (teamId && typeof competitor.shootoutScore === 'number') {
+      scoreByTeamId.set(teamId, competitor.shootoutScore)
+    }
+  }
+
+  const teamsByTeamId = new Map()
+
+  for (const item of summary.shootout ?? []) {
+    const teamId = getTeamIdFromName(item.team)
+    if (!teamId) continue
+
+    const attempts = (item.shots ?? [])
+      .map((shot, index) => ({
+        player: shot.player ?? `Attempt ${shot.shotNumber ?? index + 1}`,
+        shotNumber: shot.shotNumber ?? index + 1,
+        didScore: Boolean(shot.didScore),
+      }))
+      .sort((left, right) => left.shotNumber - right.shotNumber)
+
+    teamsByTeamId.set(teamId, {
+      teamId,
+      score: scoreByTeamId.get(teamId) ?? attempts.filter((attempt) => attempt.didScore).length,
+      attempts,
+    })
+  }
+
+  const home = teamsByTeamId.get(homeTeamId)
+  const away = teamsByTeamId.get(awayTeamId)
+  return home && away ? { home, away } : null
 }
 
 async function updateActualResults(rows) {

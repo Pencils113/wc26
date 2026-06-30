@@ -51,7 +51,7 @@ import {
   upsertLocalSubmission,
 } from './lib/storage'
 import { hasSupabaseConfig } from './lib/supabaseClient'
-import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type KnockoutRound, type MatchResult, type ResolvedMatch, type Room, type TeamId } from './types'
+import { GROUP_IDS, type ActualResults, type BracketPicks, type BracketSubmission, type GroupId, type KnockoutRound, type MatchResult, type MatchShootout, type ResolvedMatch, type Room, type TeamId } from './types'
 
 type AppStep = 'gate' | 'name' | 'rulesIntro' | 'build' | 'leaderboard'
 
@@ -78,6 +78,7 @@ interface ScheduleFixture {
   statusDetail?: string
   displayClock?: string
   score?: [number, number]
+  shootout?: MatchShootout
   winnerId?: TeamId | null
 }
 
@@ -1186,7 +1187,8 @@ function KnockoutReviewGrid({
           .sort((left, right) => knockoutLayout[left.id].row - knockoutLayout[right.id].row)
           .map((match) => {
             const layout = knockoutLayout[match.id]
-            const scoreLabel = formatMatchResultScore(matchResultsById.get(match.id))
+            const matchResult = matchResultsById.get(match.id)
+            const scoreLabel = formatMatchResultScore(matchResult)
 
             return (
               <article
@@ -1201,6 +1203,7 @@ function KnockoutReviewGrid({
                   <span>{match.id}</span>
                   {scoreLabel && <strong>{scoreLabel}</strong>}
                 </span>
+                {matchResult?.shootout && <PenaltyShootoutMini compact shootout={matchResult.shootout} />}
                 {match.teams.map((teamId, slotIndex) => {
                   const selected = Boolean(teamId && match.selectedWinner === teamId)
                   const result = mode === 'submission'
@@ -1957,6 +1960,7 @@ function applyMatchResult(fixture: ScheduleFixture, matchResult?: MatchResult): 
     status,
     statusDetail: matchResult.statusDetail,
     displayClock: matchResult.displayClock,
+    shootout: matchResult.shootout,
     winnerId: matchResult.winnerTeamId ?? fixture.winnerId,
   }
 }
@@ -2375,11 +2379,12 @@ function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: Act
                 </div>
                 <div className="schedule-teams">
                   <ScheduleTeamIdentity team={fixture.teams[0]} winner={fixture.status === 'completed' && fixture.teams[0].teamId === fixture.winnerId} />
-                  <small className={scoreLabel ? `schedule-score${penaltyFixture ? ' penalty-score' : ''}` : ''}>
+                  <small className={scoreLabel ? 'schedule-score' : ''}>
                     {scoreLabel ?? 'vs'}
                   </small>
                   <ScheduleTeamIdentity team={fixture.teams[1]} winner={fixture.status === 'completed' && fixture.teams[1].teamId === fixture.winnerId} />
                 </div>
+                {fixture.shootout && <PenaltyShootoutMini shootout={fixture.shootout} />}
                 <div className="schedule-place">
                   <span>{fixture.label}</span>
                   <strong>{fixture.venue}</strong>
@@ -2407,15 +2412,14 @@ function isPenaltyStatus(statusDetail: string | undefined) {
   return statusDetail?.toLowerCase().includes('pen') ?? false
 }
 
-function formatScoreLabel(homeScore: number | null | undefined, awayScore: number | null | undefined, statusDetail: string | undefined) {
+function formatScoreLabel(homeScore: number | null | undefined, awayScore: number | null | undefined) {
   if (typeof homeScore !== 'number' || typeof awayScore !== 'number') return null
 
-  const score = `${homeScore}-${awayScore}`
-  return isPenaltyStatus(statusDetail) ? `${score} pens` : score
+  return `${homeScore}-${awayScore}`
 }
 
 function formatMatchResultScore(matchResult: MatchResult | undefined) {
-  return formatScoreLabel(matchResult?.homeScore, matchResult?.awayScore, matchResult?.statusDetail)
+  return formatScoreLabel(matchResult?.homeScore, matchResult?.awayScore)
 }
 
 function isPenaltyFixture(fixture: ScheduleFixture) {
@@ -2424,7 +2428,34 @@ function isPenaltyFixture(fixture: ScheduleFixture) {
 
 function formatFixtureScore(fixture: ScheduleFixture) {
   if (!fixture.score) return null
-  return formatScoreLabel(fixture.score[0], fixture.score[1], fixture.statusDetail)
+  return formatScoreLabel(fixture.score[0], fixture.score[1])
+}
+
+function PenaltyShootoutMini({ compact = false, shootout }: { compact?: boolean; shootout: MatchShootout }) {
+  return (
+    <div className={compact ? 'shootout-mini compact' : 'shootout-mini'}>
+      {([shootout.home, shootout.away] as const).map((teamResult) => {
+        const team = teamsById[teamResult.teamId]
+
+        return (
+          <div className="shootout-row" key={teamResult.teamId}>
+            <span>{team?.code ?? teamResult.teamId}</span>
+            <div className="shootout-attempts">
+              {teamResult.attempts.map((attempt) => (
+                <span
+                  aria-label={`${attempt.player}: ${attempt.didScore ? 'made' : 'missed'}`}
+                  className={attempt.didScore ? 'shootout-attempt made' : 'shootout-attempt missed'}
+                  key={`${teamResult.teamId}-${attempt.shotNumber}`}
+                  title={`${attempt.player}: ${attempt.didScore ? 'made' : 'missed'}`}
+                />
+              ))}
+            </div>
+            <b>{teamResult.score}</b>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function LeaderboardPanel({
