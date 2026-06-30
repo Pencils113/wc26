@@ -1189,6 +1189,8 @@ function KnockoutReviewGrid({
             const layout = knockoutLayout[match.id]
             const matchResult = matchResultsById.get(match.id)
             const scoreLabel = formatMatchResultScore(matchResult)
+            const shootoutLabel = formatShootoutScore(matchResult?.shootout)
+            const shootoutTitle = formatShootoutTitle(matchResult?.shootout)
 
             return (
               <article
@@ -1201,9 +1203,13 @@ function KnockoutReviewGrid({
               >
                 <span className="review-match-meta">
                   <span>{match.id}</span>
-                  {scoreLabel && <strong>{scoreLabel}</strong>}
+                  {scoreLabel && (
+                    <strong className="review-score-label" title={shootoutTitle}>
+                      {scoreLabel}
+                      {shootoutLabel && <span className="shootout-inline">{shootoutLabel}</span>}
+                    </strong>
+                  )}
                 </span>
-                {matchResult?.shootout && <PenaltyShootoutMini compact shootout={matchResult.shootout} />}
                 {match.teams.map((teamId, slotIndex) => {
                   const selected = Boolean(teamId && match.selectedWinner === teamId)
                   const result = mode === 'submission'
@@ -2344,6 +2350,8 @@ function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: Act
           const showStatusDivider = index === 0 || previousStatus !== fixture.status
           const penaltyFixture = isPenaltyFixture(fixture)
           const scoreLabel = formatFixtureScore(fixture)
+          const shootoutLabel = formatShootoutScore(fixture.shootout)
+          const shootoutTitle = formatShootoutTitle(fixture.shootout)
           const statusLabel = fixture.status === 'completed'
             ? 'Completed'
             : fixture.status === 'live'
@@ -2379,12 +2387,12 @@ function LiveSchedulePanel({ actualResults, matchResults }: { actualResults: Act
                 </div>
                 <div className="schedule-teams">
                   <ScheduleTeamIdentity team={fixture.teams[0]} winner={fixture.status === 'completed' && fixture.teams[0].teamId === fixture.winnerId} />
-                  <small className={scoreLabel ? 'schedule-score' : ''}>
+                  <small className={scoreLabel ? 'schedule-score' : ''} title={shootoutTitle}>
                     {scoreLabel ?? 'vs'}
+                    {shootoutLabel && <span className="shootout-inline">{shootoutLabel}</span>}
                   </small>
                   <ScheduleTeamIdentity team={fixture.teams[1]} winner={fixture.status === 'completed' && fixture.teams[1].teamId === fixture.winnerId} />
                 </div>
-                {fixture.shootout && <PenaltyShootoutMini shootout={fixture.shootout} />}
                 <div className="schedule-place">
                   <span>{fixture.label}</span>
                   <strong>{fixture.venue}</strong>
@@ -2431,31 +2439,23 @@ function formatFixtureScore(fixture: ScheduleFixture) {
   return formatScoreLabel(fixture.score[0], fixture.score[1])
 }
 
-function PenaltyShootoutMini({ compact = false, shootout }: { compact?: boolean; shootout: MatchShootout }) {
-  return (
-    <div className={compact ? 'shootout-mini compact' : 'shootout-mini'}>
-      {([shootout.home, shootout.away] as const).map((teamResult) => {
-        const team = teamsById[teamResult.teamId]
+function formatShootoutScore(shootout: MatchShootout | undefined) {
+  return shootout ? `${shootout.home.score}-${shootout.away.score}p` : null
+}
 
-        return (
-          <div className="shootout-row" key={teamResult.teamId}>
-            <span>{team?.code ?? teamResult.teamId}</span>
-            <div className="shootout-attempts">
-              {teamResult.attempts.map((attempt) => (
-                <span
-                  aria-label={`${attempt.player}: ${attempt.didScore ? 'made' : 'missed'}`}
-                  className={attempt.didScore ? 'shootout-attempt made' : 'shootout-attempt missed'}
-                  key={`${teamResult.teamId}-${attempt.shotNumber}`}
-                  title={`${attempt.player}: ${attempt.didScore ? 'made' : 'missed'}`}
-                />
-              ))}
-            </div>
-            <b>{teamResult.score}</b>
-          </div>
-        )
-      })}
-    </div>
-  )
+function formatShootoutTitle(shootout: MatchShootout | undefined) {
+  if (!shootout) return undefined
+
+  return [shootout.home, shootout.away]
+    .map((teamResult) => {
+      const team = teamsById[teamResult.teamId]
+      const attempts = teamResult.attempts
+        .map((attempt) => `${attempt.shotNumber}. ${attempt.didScore ? 'made' : 'missed'} - ${attempt.player}`)
+        .join(', ')
+
+      return `${team?.code ?? teamResult.teamId} ${teamResult.score}: ${attempts}`
+    })
+    .join('\n')
 }
 
 function LeaderboardPanel({
